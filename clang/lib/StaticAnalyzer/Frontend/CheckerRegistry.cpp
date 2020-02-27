@@ -109,9 +109,9 @@ CheckerRegistry::getMutableCheckersForCmdLineArg(StringRef CmdLineArg) {
 
 CheckerRegistry::CheckerRegistry(
     ArrayRef<std::string> Plugins, DiagnosticsEngine &Diags,
-    AnalyzerOptions &AnOpts, const LangOptions &LangOpts,
+    AnalyzerOptions &AnOpts, const CheckerManager &CheckerMgr,
     ArrayRef<std::function<void(CheckerRegistry &)>> CheckerRegistrationFns)
-    : Diags(Diags), AnOpts(AnOpts), LangOpts(LangOpts) {
+    : Diags(Diags), AnOpts(AnOpts), CheckerMgr(CheckerMgr) {
 
   // Register builtin checkers.
 #define GET_CHECKERS
@@ -218,19 +218,19 @@ CheckerRegistry::CheckerRegistry(
 /// Collects dependencies in \p ret, returns false on failure.
 static bool
 collectDependenciesImpl(const CheckerRegistry::ConstCheckerInfoList &Deps,
-                        const LangOptions &LO,
+                        const CheckerManager &Mgr,
                         CheckerRegistry::CheckerInfoSet &Ret);
 
 /// Collects dependenies in \p enabledCheckers. Return None on failure.
 LLVM_NODISCARD
 static llvm::Optional<CheckerRegistry::CheckerInfoSet>
 collectDependencies(const CheckerRegistry::CheckerInfo &checker,
-                    const LangOptions &LO) {
+                    const CheckerManager &Mgr) {
 
   CheckerRegistry::CheckerInfoSet Ret;
   // Add dependencies to the enabled checkers only if all of them can be
   // enabled.
-  if (!collectDependenciesImpl(checker.Dependencies, LO, Ret))
+  if (!collectDependenciesImpl(checker.Dependencies, Mgr, Ret))
     return None;
 
   return Ret;
@@ -238,16 +238,16 @@ collectDependencies(const CheckerRegistry::CheckerInfo &checker,
 
 static bool
 collectDependenciesImpl(const CheckerRegistry::ConstCheckerInfoList &Deps,
-                        const LangOptions &LO,
+                        const CheckerManager &Mgr,
                         CheckerRegistry::CheckerInfoSet &Ret) {
 
   for (const CheckerRegistry::CheckerInfo *Dependency : Deps) {
 
-    if (Dependency->isDisabled(LO))
+    if (Dependency->isDisabled(Mgr))
       return false;
 
     // Collect dependencies recursively.
-    if (!collectDependenciesImpl(Dependency->Dependencies, LO, Ret))
+    if (!collectDependenciesImpl(Dependency->Dependencies, Mgr, Ret))
       return false;
 
     Ret.insert(Dependency);
@@ -261,12 +261,12 @@ CheckerRegistry::CheckerInfoSet CheckerRegistry::getEnabledCheckers() const {
   CheckerInfoSet EnabledCheckers;
 
   for (const CheckerInfo &Checker : Checkers) {
-    if (!Checker.isEnabled(LangOpts))
+    if (!Checker.isEnabled(CheckerMgr))
       continue;
 
     // Recursively enable its dependencies.
     llvm::Optional<CheckerInfoSet> Deps =
-        collectDependencies(Checker, LangOpts);
+        collectDependencies(Checker, CheckerMgr);
 
     if (!Deps) {
       // If we failed to enable any of the dependencies, don't enable this

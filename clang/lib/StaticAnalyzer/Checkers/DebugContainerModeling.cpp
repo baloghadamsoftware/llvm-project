@@ -133,6 +133,6 @@ void ento::registerDebugContainerModeling(CheckerManager &mgr) {
   mgr.registerChecker<DebugContainerModeling>();
 }
 
-bool ento::shouldRegisterDebugContainerModeling(const LangOptions &LO) {
+bool ento::shouldRegisterDebugContainerModeling(const CheckerManager &mgr) {
   return true;
 }

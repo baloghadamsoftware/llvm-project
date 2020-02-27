@@ -20,6 +20,8 @@ class AnalyzerOptions;
 
 namespace ento {
 
+class CheckerManager;
+
 //===----------------------------------------------------------------------===//
 // AST Consumer Actions
 //===----------------------------------------------------------------------===//
@@ -55,16 +57,16 @@ void printCheckerHelp(raw_ostream &OS,
                       ArrayRef<std::string> plugins,
                       AnalyzerOptions &opts,
                       DiagnosticsEngine &diags,
-                      const LangOptions &LangOpts);
+                      const CheckerManager &CheckerMgr);
 void printEnabledCheckerList(raw_ostream &OS, ArrayRef<std::string> plugins,
                              AnalyzerOptions &opts,
                              DiagnosticsEngine &diags,
-                             const LangOptions &LangOpts);
+                             const CheckerManager &CheckerMgr);
 void printAnalyzerConfigList(raw_ostream &OS);
 void printCheckerConfigList(raw_ostream &OS, ArrayRef<std::string> plugins,
                             AnalyzerOptions &opts,
                             DiagnosticsEngine &diags,
-                            const LangOptions &LangOpts);
+                            const CheckerManager &CheckerMgr);
 
 } // end GR namespace
 

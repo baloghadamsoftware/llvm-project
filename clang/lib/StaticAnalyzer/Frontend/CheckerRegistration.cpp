@@ -32,7 +32,7 @@ std::unique_ptr<CheckerManager> ento::createCheckerManager(
     DiagnosticsEngine &diags) {
   auto checkerMgr = std::make_unique<CheckerManager>(context, opts);
 
-  CheckerRegistry allCheckers(plugins, diags, opts, context.getLangOpts(),
+  CheckerRegistry allCheckers(plugins, diags, opts, *checkerMgr,
                               checkerRegistrationFns);
 
   allCheckers.initializeManager(*checkerMgr);
@@ -45,11 +45,11 @@ std::unique_ptr<CheckerManager> ento::createCheckerManager(
 void ento::printCheckerHelp(raw_ostream &out, ArrayRef<std::string> plugins,
                             AnalyzerOptions &anopts,
                             DiagnosticsEngine &diags,
-                            const LangOptions &langOpts) {
+                            const CheckerManager &checkerMgr) {
   out << "OVERVIEW: Clang Static Analyzer Checkers List\n\n";
   out << "USAGE: -analyzer-checker <CHECKER or PACKAGE,...>\n\n";
 
-  CheckerRegistry(plugins, diags, anopts, langOpts)
+  CheckerRegistry(plugins, diags, anopts, checkerMgr)
       .printCheckerWithDescList(out);
 }
 
@@ -57,10 +57,10 @@ void ento::printEnabledCheckerList(raw_ostream &out,
                                    ArrayRef<std::string> plugins,
                                    AnalyzerOptions &anopts,
                                    DiagnosticsEngine &diags,
-                                   const LangOptions &langOpts) {
+                                   const CheckerManager &checkerMgr) {
   out << "OVERVIEW: Clang Static Analyzer Enabled Checkers List\n\n";
 
-  CheckerRegistry(plugins, diags, anopts, langOpts)
+  CheckerRegistry(plugins, diags, anopts, checkerMgr)
       .printEnabledCheckerList(out);
 }
 
@@ -68,8 +68,8 @@ void ento::printCheckerConfigList(raw_ostream &OS,
                                   ArrayRef<std::string> plugins,
                                   AnalyzerOptions &opts,
                                   DiagnosticsEngine &diags,
-                                  const LangOptions &LangOpts) {
-  CheckerRegistry(plugins, diags, opts, LangOpts)
+                                  const CheckerManager &CheckerMgr) {
+  CheckerRegistry(plugins, diags, opts, CheckerMgr)
       .printCheckerOptionList(OS);
 }
 

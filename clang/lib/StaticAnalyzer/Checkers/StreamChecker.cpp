@@ -353,6 +353,6 @@ void ento::registerStreamChecker(CheckerManager &mgr) {
   mgr.registerChecker<StreamChecker>();
 }
 
-bool ento::shouldRegisterStreamChecker(const LangOptions &LO) {
+bool ento::shouldRegisterStreamChecker(const CheckerManager &mgr) {
   return true;
 }

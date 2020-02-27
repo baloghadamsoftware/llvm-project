@@ -69,7 +69,6 @@ namespace clang {
 
 class AnalyzerOptions;
 class DiagnosticsEngine;
-class LangOptions;
 
 namespace ento {
 
@@ -82,14 +81,14 @@ namespace ento {
 class CheckerRegistry {
 public:
   CheckerRegistry(ArrayRef<std::string> plugins, DiagnosticsEngine &diags,
-                  AnalyzerOptions &AnOpts, const LangOptions &LangOpts,
+                  AnalyzerOptions &AnOpts, const CheckerManager &CheckerMgr,
                   ArrayRef<std::function<void(CheckerRegistry &)>>
                       checkerRegistrationFns = {});
 
   /// Initialization functions perform any necessary setup for a checker.
   /// They should include a call to CheckerManager::registerChecker.
   using InitializationFunction = void (*)(CheckerManager &);
-  using ShouldRegisterFunction = bool (*)(const LangOptions &);
+  using ShouldRegisterFunction = bool (*)(const CheckerManager &);
 
   /// Specifies a command line option. It may either belong to a checker or a
   /// package.
@@ -161,12 +160,12 @@ public:
 
     ConstCheckerInfoList Dependencies;
 
-    bool isEnabled(const LangOptions &LO) const {
-      return State == StateFromCmdLine::State_Enabled && ShouldRegister(LO);
+    bool isEnabled(const CheckerManager &mgr) const {
+      return State == StateFromCmdLine::State_Enabled && ShouldRegister(mgr);
     }
 
-    bool isDisabled(const LangOptions &LO) const {
-      return State == StateFromCmdLine::State_Disabled && ShouldRegister(LO);
+    bool isDisabled(const CheckerManager &mgr) const {
+      return State == StateFromCmdLine::State_Disabled && ShouldRegister(mgr);
     }
 
     // Since each checker must have a different full name, we can identify
@@ -209,7 +208,7 @@ private:
     mgr.registerChecker<T>();
   }
 
-  template <typename T> static bool returnTrue(const LangOptions &LO) {
+  template <typename T> static bool returnTrue(const CheckerManager &mgr) {
     return true;
   }
 
@@ -316,7 +315,7 @@ private:
 
   DiagnosticsEngine &Diags;
   AnalyzerOptions &AnOpts;
-  const LangOptions &LangOpts;
+  const CheckerManager &CheckerMgr;
 };
 
 } // namespace ento

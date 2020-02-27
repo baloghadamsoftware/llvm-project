@@ -1035,6 +1035,6 @@ void ento::registerContainerModeling(CheckerManager &mgr) {
   mgr.registerChecker<ContainerModeling>();
 }
 
-bool ento::shouldRegisterContainerModeling(const LangOptions &LO) {
+bool ento::shouldRegisterContainerModeling(const CheckerManager &mgr) {
   return true;
 }

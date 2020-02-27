@@ -243,6 +243,9 @@ bool ExecuteCompilerInvocation(CompilerInstance *Clang) {
   // These should happen AFTER plugins have been loaded!
 
   AnalyzerOptions &AnOpts = *Clang->getAnalyzerOpts();
+  ASTContext &Context = *Clang->getASTContext();
+  auto CheckerMgr = std::make_unique<CheckerManager>(Context, AnOpts);
+  
   // Honor -analyzer-checker-help and -analyzer-checker-help-hidden.
   if (AnOpts.ShowCheckerHelp || AnOpts.ShowCheckerHelpAlpha ||
       AnOpts.ShowCheckerHelpDeveloper) {

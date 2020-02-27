@@ -3368,7 +3368,7 @@ void ento::registerDynamicMemoryModeling(CheckerManager &mgr) {
       mgr.getAnalyzerOptions().getCheckerBooleanOption(checker, "Optimistic");
 }
 
-bool ento::shouldRegisterDynamicMemoryModeling(const LangOptions &LO) {
+bool ento::shouldRegisterDynamicMemoryModeling(const CheckerManager &mgr) {
   return true;
 }
 
@@ -3380,7 +3380,7 @@ bool ento::shouldRegisterDynamicMemoryModeling(const LangOptions &LO) {
         mgr.getCurrentCheckerName();                                           \
   }                                                                            \
                                                                                \
-  bool ento::shouldRegister##name(const LangOptions &LO) { return true; }
+  bool ento::shouldRegister##name(const CheckerManager &mgr) { return true; }
 
 REGISTER_CHECKER(MallocChecker)
 REGISTER_CHECKER(NewDeleteChecker)
