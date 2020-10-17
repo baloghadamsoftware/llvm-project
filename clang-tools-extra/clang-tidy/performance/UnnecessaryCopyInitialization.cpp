@@ -12,6 +12,7 @@
 #include "../utils/FixItHintUtils.h"
 #include "../utils/Matchers.h"
 #include "../utils/OptionsUtils.h"
+#include "clang/Basic/Diagnostic.h"
 
 namespace clang {
 namespace tidy {
@@ -21,8 +22,11 @@ namespace {
 void recordFixes(const VarDecl &Var, ASTContext &Context,
                  DiagnosticBuilder &Diagnostic) {
   Diagnostic << utils::fixit::changeVarDeclToReference(Var, Context);
-  if (!Var.getType().isLocalConstQualified())
-    Diagnostic << utils::fixit::changeVarDeclToConst(Var);
+  if (!Var.getType().isLocalConstQualified()) {
+    if (llvm::Optional<FixItHint> Fix = utils::fixit::addQualifierToVarDecl(
+            Var, Context, DeclSpec::TQ::TQ_const))
+      Diagnostic << *Fix;
+  }
 }
 
 } // namespace
@@ -50,7 +54,8 @@ void UnnecessaryCopyInitialization::registerMatchers(MatchFinder *Finder) {
                         on(declRefExpr(to(varDecl().bind("objectArg")))));
   auto ConstRefReturningFunctionCall =
       callExpr(callee(functionDecl(returns(ConstReference))),
-               unless(callee(cxxMethodDecl())));
+               unless(callee(cxxMethodDecl())))
+          .bind("initFunctionCall");
 
   auto localVarCopiedFrom = [this](const internal::Matcher<Expr> &CopyCtorArg) {
     return compoundStmt(
@@ -64,12 +69,13 @@ void UnnecessaryCopyInitialization::registerMatchers(MatchFinder *Finder) {
                                            matchers::matchesAnyListedName(
                                                AllowedTypes)))))),
                                    unless(isImplicit()),
-                                   hasInitializer(
+                                   hasInitializer(traverse(
+                                       ast_type_traits::TK_AsIs,
                                        cxxConstructExpr(
                                            hasDeclaration(cxxConstructorDecl(
                                                isCopyConstructor())),
                                            hasArgument(0, CopyCtorArg))
-                                           .bind("ctorCall")))
+                                           .bind("ctorCall"))))
                                .bind("newVarDecl")))
                        .bind("declStmt")))
         .bind("blockStmt");
@@ -91,6 +97,10 @@ void UnnecessaryCopyInitialization::check(
   const auto *ObjectArg = Result.Nodes.getNodeAs<VarDecl>("objectArg");
   const auto *BlockStmt = Result.Nodes.getNodeAs<Stmt>("blockStmt");
   const auto *CtorCall = Result.Nodes.getNodeAs<CXXConstructExpr>("ctorCall");
+  const auto *InitFunctionCall =
+      Result.Nodes.getNodeAs<CallExpr>("initFunctionCall");
+
+  TraversalKindScope RAII(*Result.Context, ast_type_traits::TK_AsIs);
 
   // Do not propose fixes if the DeclStmt has multiple VarDecls or in macros
   // since we cannot place them correctly.
@@ -106,6 +116,11 @@ void UnnecessaryCopyInitialization::check(
       return;
 
   if (OldVar == nullptr) {
+    // Only allow initialization of a const reference from a free function if it
+    // has no arguments. Otherwise it could return an alias to one of its
+    // arguments and the arguments need to be checked for const use as well.
+    if (InitFunctionCall != nullptr && InitFunctionCall->getNumArgs() > 0)
+      return;
     handleCopyFromMethodReturn(*NewVar, *BlockStmt, IssueFix, ObjectArg,
                                *Result.Context);
   } else {

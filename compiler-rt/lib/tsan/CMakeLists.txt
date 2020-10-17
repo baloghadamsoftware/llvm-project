@@ -25,53 +25,64 @@ append_list_if(SANITIZER_LIMIT_FRAME_SIZE -Wframe-larger-than=530
 append_list_if(COMPILER_RT_HAS_WGLOBAL_CONSTRUCTORS_FLAG -Wglobal-constructors
                TSAN_RTL_CFLAGS)
 
+if (TARGET cxx-headers OR HAVE_LIBCXX)
+  set(TSAN_DEPS cxx-headers)
+endif()
+
 set(TSAN_SOURCES
-  rtl/tsan_clock.cc
-  rtl/tsan_debugging.cc
-  rtl/tsan_external.cc
-  rtl/tsan_fd.cc
-  rtl/tsan_flags.cc
-  rtl/tsan_ignoreset.cc
-  rtl/tsan_interceptors.cc
-  rtl/tsan_interface.cc
-  rtl/tsan_interface_ann.cc
-  rtl/tsan_interface_atomic.cc
-  rtl/tsan_interface_java.cc
-  rtl/tsan_malloc_mac.cc
-  rtl/tsan_md5.cc
-  rtl/tsan_mman.cc
-  rtl/tsan_mutex.cc
-  rtl/tsan_mutexset.cc
-  rtl/tsan_preinit.cc
-  rtl/tsan_report.cc
-  rtl/tsan_rtl.cc
-  rtl/tsan_rtl_mutex.cc
-  rtl/tsan_rtl_proc.cc
-  rtl/tsan_rtl_report.cc
-  rtl/tsan_rtl_thread.cc
-  rtl/tsan_stack_trace.cc
-  rtl/tsan_stat.cc
-  rtl/tsan_suppressions.cc
-  rtl/tsan_symbolize.cc
-  rtl/tsan_sync.cc)
+  rtl/tsan_clock.cpp
+  rtl/tsan_debugging.cpp
+  rtl/tsan_external.cpp
+  rtl/tsan_fd.cpp
+  rtl/tsan_flags.cpp
+  rtl/tsan_ignoreset.cpp
+  rtl/tsan_interceptors_posix.cpp
+  rtl/tsan_interface.cpp
+  rtl/tsan_interface_ann.cpp
+  rtl/tsan_interface_atomic.cpp
+  rtl/tsan_interface_java.cpp
+  rtl/tsan_malloc_mac.cpp
+  rtl/tsan_md5.cpp
+  rtl/tsan_mman.cpp
+  rtl/tsan_mutex.cpp
+  rtl/tsan_mutexset.cpp
+  rtl/tsan_preinit.cpp
+  rtl/tsan_report.cpp
+  rtl/tsan_rtl.cpp
+  rtl/tsan_rtl_mutex.cpp
+  rtl/tsan_rtl_proc.cpp
+  rtl/tsan_rtl_report.cpp
+  rtl/tsan_rtl_thread.cpp
+  rtl/tsan_stack_trace.cpp
+  rtl/tsan_stat.cpp
+  rtl/tsan_suppressions.cpp
+  rtl/tsan_symbolize.cpp
+  rtl/tsan_sync.cpp
+  )
 
 set(TSAN_CXX_SOURCES
-  rtl/tsan_new_delete.cc)
+  rtl/tsan_new_delete.cpp
+  )
 
 if(APPLE)
   list(APPEND TSAN_SOURCES
-    rtl/tsan_interceptors_mac.cc
-    rtl/tsan_platform_mac.cc
-    rtl/tsan_platform_posix.cc)
+    rtl/tsan_interceptors_mac.cpp
+    rtl/tsan_interceptors_mach_vm.cpp
+    rtl/tsan_platform_mac.cpp
+    rtl/tsan_platform_posix.cpp
+    )
 elseif(UNIX)
   # Assume Linux
   list(APPEND TSAN_SOURCES
-    rtl/tsan_platform_linux.cc
-    rtl/tsan_platform_posix.cc)
+    rtl/tsan_platform_linux.cpp
+    rtl/tsan_platform_posix.cpp
+    )
 endif()
 
 if(COMPILER_RT_INTERCEPT_LIBDISPATCH)
-  list(APPEND TSAN_SOURCES rtl/tsan_libdispatch.cc)
+  list(APPEND TSAN_SOURCES
+    rtl/tsan_interceptors_libdispatch.cpp
+    )
   list(APPEND TSAN_RTL_CFLAGS ${COMPILER_RT_LIBDISPATCH_CFLAGS})
 endif()
 
@@ -107,6 +118,14 @@ set(TSAN_RUNTIME_LIBRARIES)
 add_compiler_rt_component(tsan)
 
 if(APPLE)
+  # Ideally we would check the SDK version for the actual platform we are
+  # building for here.  To make our lifes easier we assume the host SDK setup is
+  # sane and use the macOS SDK version as a proxy for aligned SDKs.
+  find_darwin_sdk_version(macosx_sdk_version "macosx")
+  if ("${macosx_sdk_version}" VERSION_LESS 10.12)
+    message(FATAL_ERROR "Building the TSan runtime requires at least macOS SDK 10.12 (or aligned SDK on other platforms)")
+  endif()
+
   add_asm_sources(TSAN_ASM_SOURCES rtl/tsan_rtl_amd64.S rtl/tsan_rtl_aarch64.S)
 
   set(TSAN_LINK_LIBS ${SANITIZER_COMMON_LINK_LIBS})
@@ -127,6 +146,7 @@ if(APPLE)
                 RTSanitizerCommonSymbolizer
                 RTUbsan
     CFLAGS ${TSAN_RTL_CFLAGS}
+    DEPS ${TSAN_DEPS}
     LINK_FLAGS ${SANITIZER_COMMON_LINK_FLAGS} ${WEAK_SYMBOL_LINK_FLAGS}
     LINK_LIBS ${TSAN_LINK_LIBS} objc
     PARENT_TARGET tsan)
@@ -135,7 +155,8 @@ if(APPLE)
     ARCHS ${TSAN_SUPPORTED_ARCH}
     SOURCES ${TSAN_SOURCES} ${TSAN_CXX_SOURCES} ${TSAN_ASM_SOURCES}
     ADDITIONAL_HEADERS ${TSAN_HEADERS}
-    CFLAGS ${TSAN_RTL_CFLAGS})
+    CFLAGS ${TSAN_RTL_CFLAGS}
+    DEPS ${TSAN_DEPS})
 
   # Build and check Go runtime.
   set(BUILDGO_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/go/buildgo.sh)
@@ -199,6 +220,7 @@ else()
               $<TARGET_OBJECTS:RTUbsan.${arch}>
       ADDITIONAL_HEADERS ${TSAN_HEADERS}
       CFLAGS ${TSAN_RTL_CFLAGS}
+      DEPS ${TSAN_DEPS}
       PARENT_TARGET tsan)
     add_compiler_rt_runtime(clang_rt.tsan_cxx
       STATIC
@@ -207,6 +229,7 @@ else()
               $<TARGET_OBJECTS:RTUbsan_cxx.${arch}>
       ADDITIONAL_HEADERS ${TSAN_HEADERS}
       CFLAGS ${TSAN_RTL_CFLAGS}
+      DEPS ${TSAN_DEPS}
       PARENT_TARGET tsan)
     list(APPEND TSAN_RUNTIME_LIBRARIES clang_rt.tsan-${arch}
                                        clang_rt.tsan_cxx-${arch})

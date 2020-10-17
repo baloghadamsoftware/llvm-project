@@ -43,6 +43,8 @@
 // CLSTDALL-NEXT: CL1.2
 // CLSTDALL-NEXT: cl2.0
 // CLSTDALL-NEXT: CL2.0
+// CLSTDALL-NEXT: cl3.0
+// CLSTDALL-NEXT: CL3.0
 // CLSTDALL-NEXT: clc++
 // CLSTDALL-NEXT: CLC++
 // RUN: %clang --autocomplete=-fno-sanitize-coverage=,f | FileCheck %s -check-prefix=FNOSANICOVER
@@ -54,6 +56,7 @@
 // FNOSANICOVERALL-NEXT: func
 // FNOSANICOVERALL-NEXT: indirect-calls
 // FNOSANICOVERALL-NEXT: inline-8bit-counters
+// FNOSANICOVERALL-NEXT: inline-bool-flag
 // FNOSANICOVERALL-NEXT: no-prune
 // FNOSANICOVERALL-NEXT: trace-bb
 // FNOSANICOVERALL-NEXT: trace-cmp
@@ -99,6 +102,7 @@
 // WARNING-NEXT: -Wmain-return-type
 // WARNING-NEXT: -Wmalformed-warning-check
 // WARNING-NEXT: -Wmany-braces-around-scalar-init
+// WARNING-NEXT: -Wmax-tokens
 // WARNING-NEXT: -Wmax-unsigned-zero
 // RUN: %clang --autocomplete=-Wno-invalid-pp- | FileCheck %s -check-prefix=NOWARNING
 // NOWARNING: -Wno-invalid-pp-token

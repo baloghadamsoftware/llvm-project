@@ -22,6 +22,7 @@
 #include "LLDBServerUtilities.h"
 #include "Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.h"
 #include "Plugins/Process/gdb-remote/ProcessGDBRemoteLog.h"
+#include "lldb/Host/Config.h"
 #include "lldb/Host/ConnectionFileDescriptor.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/HostGetOpt.h"
@@ -37,8 +38,12 @@
 
 #if defined(__linux__)
 #include "Plugins/Process/Linux/NativeProcessLinux.h"
+#elif defined(__FreeBSD__)
+#include "Plugins/Process/FreeBSDRemote/NativeProcessFreeBSD.h"
 #elif defined(__NetBSD__)
 #include "Plugins/Process/NetBSD/NativeProcessNetBSD.h"
+#elif defined(_WIN32)
+#include "Plugins/Process/Windows/Common/NativeProcessWindows.h"
 #endif
 
 #ifndef LLGS_PROGRAM_NAME
@@ -58,8 +63,12 @@ using namespace lldb_private::process_gdb_remote;
 namespace {
 #if defined(__linux__)
 typedef process_linux::NativeProcessLinux::Factory NativeProcessFactory;
+#elif defined(__FreeBSD__)
+typedef process_freebsd::NativeProcessFreeBSD::Factory NativeProcessFactory;
 #elif defined(__NetBSD__)
 typedef process_netbsd::NativeProcessNetBSD::Factory NativeProcessFactory;
+#elif defined(_WIN32)
+typedef NativeProcessWindows::Factory NativeProcessFactory;
 #else
 // Dummy implementation to make sure the code compiles
 class NativeProcessFactory : public NativeProcessProtocol::Factory {
@@ -104,10 +113,10 @@ static struct option g_long_options[] = {
     {"fd", required_argument, nullptr, 'F'},
     {nullptr, 0, nullptr, 0}};
 
+#ifndef _WIN32
 // Watch for signals
 static int g_sighup_received_count = 0;
 
-#ifndef _WIN32
 static void sighup_handler(MainLoopBase &mainloop) {
   ++g_sighup_received_count;
 
@@ -233,7 +242,7 @@ void ConnectToRemote(MainLoop &mainloop,
     snprintf(connection_url, sizeof(connection_url), "fd://%d", connection_fd);
 
     // Create the connection.
-#if !defined LLDB_DISABLE_POSIX && !defined _WIN32
+#if LLDB_ENABLE_POSIX && !defined _WIN32
     ::fcntl(connection_fd, F_SETFD, FD_CLOEXEC);
 #endif
     connection_up.reset(new ConnectionFileDescriptor);
@@ -262,7 +271,8 @@ void ConnectToRemote(MainLoop &mainloop,
       final_host_and_port.append("localhost");
     final_host_and_port.append(host_and_port);
 
-    const std::string::size_type colon_pos = final_host_and_port.find(':');
+    // Note: use rfind, because the host/port may look like "[::1]:12345".
+    const std::string::size_type colon_pos = final_host_and_port.rfind(':');
     if (colon_pos != std::string::npos) {
       connection_host = final_host_and_port.substr(0, colon_pos);
       connection_port = final_host_and_port.substr(colon_pos + 1);
@@ -514,10 +524,10 @@ int main_gdbserver(int argc, char *argv[]) {
     handle_launch(gdb_server, argc, argv);
 
   // Print version info.
-  printf("%s-%s", LLGS_PROGRAM_NAME, LLGS_VERSION_STR);
+  printf("%s-%s\n", LLGS_PROGRAM_NAME, LLGS_VERSION_STR);
 
   ConnectToRemote(mainloop, gdb_server, reverse_connect, host_and_port,
-                  progname, subcommand, named_pipe_path.c_str(), 
+                  progname, subcommand, named_pipe_path.c_str(),
                   unnamed_pipe, connection_fd);
 
   if (!gdb_server.IsConnected()) {

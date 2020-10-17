@@ -106,7 +106,7 @@ struct InstRegexOp : public SetTheory::Operator {
       StringRef PatStr = Original.substr(FirstMeta);
       if (!PatStr.empty()) {
         // For the rest use a python-style prefix match.
-        std::string pat = PatStr;
+        std::string pat = std::string(PatStr);
         if (pat[0] != '^') {
           pat.insert(0, "^(");
           pat.insert(pat.end(), ')');
@@ -172,8 +172,8 @@ CodeGenSchedModels::CodeGenSchedModels(RecordKeeper &RK,
 
   // Allow Set evaluation to recognize the dags used in InstRW records:
   // (instrs Op1, Op1...)
-  Sets.addOperator("instrs", llvm::make_unique<InstrsOp>());
-  Sets.addOperator("instregex", llvm::make_unique<InstRegexOp>(Target));
+  Sets.addOperator("instrs", std::make_unique<InstrsOp>());
+  Sets.addOperator("instregex", std::make_unique<InstRegexOp>(Target));
 
   // Instantiate a CodeGenProcModel for each SchedMachineModel with the values
   // that are explicitly referenced in tablegen records. Resources associated
@@ -248,8 +248,7 @@ void CodeGenSchedModels::checkSTIPredicates() const {
     }
 
     PrintError(R->getLoc(), "STIPredicate " + Name + " multiply declared.");
-    PrintNote(It->second->getLoc(), "Previous declaration was here.");
-    PrintFatalError(R->getLoc(), "Invalid STIPredicateDecl found.");
+    PrintFatalNote(It->second->getLoc(), "Previous declaration was here.");
   }
 
   // Disallow InstructionEquivalenceClasses with an empty instruction list.
@@ -454,10 +453,8 @@ void CodeGenSchedModels::checkMCInstPredicates() const {
 
     PrintError(TIIPred->getLoc(),
                "TIIPredicate " + Name + " is multiply defined.");
-    PrintNote(It->second->getLoc(),
-              " Previous definition of " + Name + " was here.");
-    PrintFatalError(TIIPred->getLoc(),
-                    "Found conflicting definitions of TIIPredicate.");
+    PrintFatalNote(It->second->getLoc(),
+                   " Previous definition of " + Name + " was here.");
   }
 }
 
@@ -546,7 +543,7 @@ void CodeGenSchedModels::addProcModel(Record *ProcDef) {
   if (!ProcModelMap.insert(std::make_pair(ModelKey, ProcModels.size())).second)
     return;
 
-  std::string Name = ModelKey->getName();
+  std::string Name = std::string(ModelKey->getName());
   if (ModelKey->isSubClassOf("SchedMachineModel")) {
     Record *ItinsDef = ModelKey->getValueAsDef("Itineraries");
     ProcModels.emplace_back(ProcModels.size(), Name, ModelKey, ItinsDef);
@@ -977,7 +974,7 @@ CodeGenSchedModels::createSchedClassName(Record *ItinClassDef,
 
   std::string Name;
   if (ItinClassDef && ItinClassDef->getName() != "NoItinerary")
-    Name = ItinClassDef->getName();
+    Name = std::string(ItinClassDef->getName());
   for (unsigned Idx : OperWrites) {
     if (!Name.empty())
       Name += '_';
@@ -1082,11 +1079,15 @@ void CodeGenSchedModels::createInstRWClass(Record *InstRWDef) {
           for (Record *RWD : RWDefs) {
             if (RWD->getValueAsDef("SchedModel") == RWModelDef &&
                 RWModelDef->getValueAsBit("FullInstRWOverlapCheck")) {
-              for (Record *Inst : InstDefs) {
-                PrintFatalError(InstRWDef->getLoc(), "Overlapping InstRW def " +
-                            Inst->getName() + " also matches " +
-                            RWD->getValue("Instrs")->getValue()->getAsString());
-              }
+              assert(!InstDefs.empty()); // Checked at function start.
+              PrintError(
+                  InstRWDef->getLoc(),
+                  "Overlapping InstRW definition for \"" +
+                      InstDefs.front()->getName() +
+                      "\" also matches previous \"" +
+                      RWD->getValue("Instrs")->getValue()->getAsString() +
+                      "\".");
+              PrintFatalNote(RWD->getLoc(), "Previous match was here.");
             }
           }
           LLVM_DEBUG(dbgs() << "InstRW: Reuse SC " << OldSCIdx << ":"
@@ -1114,11 +1115,14 @@ void CodeGenSchedModels::createInstRWClass(Record *InstRWDef) {
       Record *RWModelDef = InstRWDef->getValueAsDef("SchedModel");
       for (Record *OldRWDef : SchedClasses[OldSCIdx].InstRWs) {
         if (OldRWDef->getValueAsDef("SchedModel") == RWModelDef) {
-          for (Record *InstDef : InstDefs) {
-            PrintFatalError(OldRWDef->getLoc(), "Overlapping InstRW def " +
-                       InstDef->getName() + " also matches " +
-                       OldRWDef->getValue("Instrs")->getValue()->getAsString());
-          }
+          assert(!InstDefs.empty()); // Checked at function start.
+          PrintError(
+              InstRWDef->getLoc(),
+              "Overlapping InstRW definition for \"" +
+                  InstDefs.front()->getName() + "\" also matches previous \"" +
+                  OldRWDef->getValue("Instrs")->getValue()->getAsString() +
+                  "\".");
+          PrintFatalNote(OldRWDef->getLoc(), "Previous match was here.");
         }
         assert(OldRWDef != InstRWDef &&
                "SchedClass has duplicate InstRW def");
@@ -1277,6 +1281,7 @@ void CodeGenSchedModels::inferFromInstRWs(unsigned SCIdx) {
     findRWs(Rec->getValueAsListOfDefs("OperandReadWrites"), Writes, Reads);
     unsigned PIdx = getProcModel(Rec->getValueAsDef("SchedModel")).Index;
     inferFromRW(Writes, Reads, SCIdx, PIdx); // May mutate SchedClasses.
+    SchedClasses[SCIdx].InstRWProcIndices.insert(PIdx);
   }
 }
 
@@ -1635,6 +1640,24 @@ void PredTransitions::substituteVariants(const PredTransition &Trans) {
   }
 }
 
+static void addSequences(CodeGenSchedModels &SchedModels,
+                         const SmallVectorImpl<SmallVector<unsigned, 4>> &Seqs,
+                         IdxVec &Result, bool IsRead) {
+  for (const auto &S : Seqs)
+    if (!S.empty())
+      Result.push_back(SchedModels.findOrInsertRW(S, IsRead));
+}
+
+static void dumpTransition(const CodeGenSchedModels &SchedModels,
+                           const CodeGenSchedClass &FromSC,
+                           const CodeGenSchedTransition &SCTrans) {
+  LLVM_DEBUG(dbgs() << "Adding transition from " << FromSC.Name << "("
+                    << FromSC.Index << ") to "
+                    << SchedModels.getSchedClass(SCTrans.ToClassIdx).Name << "("
+                    << SCTrans.ToClassIdx << ")"
+                    << " on processor indices: (";
+             dumpIdxVec(SCTrans.ProcIndices); dbgs() << ")\n");
+}
 // Create a new SchedClass for each variant found by inferFromRW. Pass
 static void inferFromTransitions(ArrayRef<PredTransition> LastTransitions,
                                  unsigned FromClassIdx,
@@ -1643,21 +1666,24 @@ static void inferFromTransitions(ArrayRef<PredTransition> LastTransitions,
   // requires creating a new SchedClass.
   for (ArrayRef<PredTransition>::iterator
          I = LastTransitions.begin(), E = LastTransitions.end(); I != E; ++I) {
-    IdxVec OperWritesVariant;
-    transform(I->WriteSequences, std::back_inserter(OperWritesVariant),
-              [&SchedModels](ArrayRef<unsigned> WS) {
-                return SchedModels.findOrInsertRW(WS, /*IsRead=*/false);
-              });
-    IdxVec OperReadsVariant;
-    transform(I->ReadSequences, std::back_inserter(OperReadsVariant),
-              [&SchedModels](ArrayRef<unsigned> RS) {
-                return SchedModels.findOrInsertRW(RS, /*IsRead=*/true);
-              });
+    IdxVec OperWritesVariant, OperReadsVariant;
+    addSequences(SchedModels, I->WriteSequences, OperWritesVariant, false);
+    addSequences(SchedModels, I->ReadSequences, OperReadsVariant, true);
     CodeGenSchedTransition SCTrans;
+
+    // Transition should not contain processor indices already assigned to
+    // InstRWs in this scheduling class.
+    const CodeGenSchedClass &FromSC = SchedModels.getSchedClass(FromClassIdx);
+    llvm::copy_if(I->ProcIndices, std::back_inserter(SCTrans.ProcIndices),
+                  [&FromSC](unsigned PIdx) {
+                    return !FromSC.InstRWProcIndices.count(PIdx);
+                  });
+    if (SCTrans.ProcIndices.empty())
+      continue;
     SCTrans.ToClassIdx =
-      SchedModels.addSchedClass(/*ItinClassDef=*/nullptr, OperWritesVariant,
-                                OperReadsVariant, I->ProcIndices);
-    SCTrans.ProcIndices.assign(I->ProcIndices.begin(), I->ProcIndices.end());
+        SchedModels.addSchedClass(/*ItinClassDef=*/nullptr, OperWritesVariant,
+                                  OperReadsVariant, I->ProcIndices);
+    dumpTransition(SchedModels, FromSC, SCTrans);
     // The final PredTerm is unique set of predicates guarding the transition.
     RecVec Preds;
     transform(I->PredTerm, std::back_inserter(Preds),
@@ -1680,7 +1706,6 @@ void CodeGenSchedModels::inferFromRW(ArrayRef<unsigned> OperWrites,
                                      ArrayRef<unsigned> ProcIndices) {
   LLVM_DEBUG(dbgs() << "INFER RW proc("; dumpIdxVec(ProcIndices);
              dbgs() << ") ");
-
   // Create a seed transition with an empty PredTerm and the expanded sequences
   // of SchedWrites for the current SchedClass.
   std::vector<PredTransition> LastTransitions;
@@ -2185,13 +2210,14 @@ void CodeGenSchedClass::dump(const CodeGenSchedModels* SchedModels) const {
       dbgs().indent(10);
     }
   }
-  dbgs() << "\n  ProcIdx: "; dumpIdxVec(ProcIndices); dbgs() << '\n';
+  dbgs() << "\n  ProcIdx: "; dumpIdxVec(ProcIndices);
   if (!Transitions.empty()) {
     dbgs() << "\n Transitions for Proc ";
     for (const CodeGenSchedTransition &Transition : Transitions) {
       dumpIdxVec(Transition.ProcIndices);
     }
   }
+  dbgs() << '\n';
 }
 
 void PredTransitions::dump() const {

@@ -1,11 +1,24 @@
 // RUN: %clang_cc1 -std=c++98 %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
 // RUN: %clang_cc1 -std=c++11 %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
 // RUN: %clang_cc1 -std=c++14 %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
-// RUN: %clang_cc1 -std=c++1z %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
+// RUN: %clang_cc1 -std=c++17 %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
+// RUN: %clang_cc1 -std=c++2a %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
 
-#if __cplusplus < 201103L
-// expected-no-diagnostics
+namespace dr1423 { // dr1423: 11
+#if __cplusplus >= 201103L
+  bool b1 = nullptr; // expected-error {{cannot initialize}}
+  bool b2(nullptr); // expected-warning {{implicit conversion of nullptr constant to 'bool'}}
+  bool b3 = {nullptr}; // expected-error {{cannot initialize}}
+  bool b4{nullptr}; // expected-warning {{implicit conversion of nullptr constant to 'bool'}}
 #endif
+}
+
+namespace dr1443 { // dr1443: yes
+struct A {
+  int i;
+  A() { void foo(int=i); } // expected-error {{default argument references 'this'}}
+};
+}
 
 // dr1425: na abi
 
@@ -38,18 +51,24 @@ namespace dr1460 { // dr1460: 3.5
   }
 
   union A {};
-  union B { int n; }; // expected-note +{{here}}
+  union B { int n; }; // expected-note 0+{{here}}
   union C { int n = 0; };
   struct D { union {}; }; // expected-error {{does not declare anything}}
-  struct E { union { int n; }; }; // expected-note +{{here}}
+  struct E { union { int n; }; }; // expected-note 0+{{here}}
   struct F { union { int n = 0; }; };
 
   struct X {
     friend constexpr A::A() noexcept;
-    friend constexpr B::B() noexcept; // expected-error {{follows non-constexpr declaration}}
+    friend constexpr B::B() noexcept;
+#if __cplusplus <= 201703L
+    // expected-error@-2 {{follows non-constexpr declaration}}
+#endif
     friend constexpr C::C() noexcept;
     friend constexpr D::D() noexcept;
-    friend constexpr E::E() noexcept; // expected-error {{follows non-constexpr declaration}}
+    friend constexpr E::E() noexcept;
+#if __cplusplus <= 201703L
+    // expected-error@-2 {{follows non-constexpr declaration}}
+#endif
     friend constexpr F::F() noexcept;
   };
 
@@ -64,37 +83,61 @@ namespace dr1460 { // dr1460: 3.5
 
   namespace Defaulted {
     union A { constexpr A() = default; };
-    union B { int n; constexpr B() = default; }; // expected-error {{not constexpr}}
+    union B { int n; constexpr B() = default; };
+#if __cplusplus <= 201703L
+    // expected-error@-2 {{not constexpr}}
+#endif
     union C { int n = 0; constexpr C() = default; };
     struct D { union {}; constexpr D() = default; }; // expected-error {{does not declare anything}}
-    struct E { union { int n; }; constexpr E() = default; }; // expected-error {{not constexpr}}
+    struct E { union { int n; }; constexpr E() = default; };
+#if __cplusplus <= 201703L
+    // expected-error@-2 {{not constexpr}}
+#endif
     struct F { union { int n = 0; }; constexpr F() = default; };
 
-    struct G { union { int n = 0; }; union { int m; }; constexpr G() = default; }; // expected-error {{not constexpr}}
+    struct G { union { int n = 0; }; union { int m; }; constexpr G() = default; };
+#if __cplusplus <= 201703L
+    // expected-error@-2 {{not constexpr}}
+#endif
     struct H {
       union {
         int n = 0;
       };
-      union { // expected-note 2{{member not initialized}}
+      union { // expected-note 0-2{{member not initialized}}
         int m;
       };
-      constexpr H() {} // expected-error {{must initialize all members}}
+      constexpr H() {}
+#if __cplusplus <= 201703L
+      // expected-error@-2 {{initialize all members}}
+#endif
       constexpr H(bool) : m(1) {}
-      constexpr H(char) : n(1) {} // expected-error {{must initialize all members}}
+      constexpr H(char) : n(1) {}
+#if __cplusplus <= 201703L
+      // expected-error@-2 {{initialize all members}}
+#endif
       constexpr H(double) : m(1), n(1) {}
     };
   }
 
 #if __cplusplus > 201103L
   template<typename T> constexpr bool check() {
-    T t; // expected-note-re 2{{non-constexpr constructor '{{[BE]}}'}}
+    T t;
+#if __cplusplus <= 201703L
+    // expected-note-re@-2 2{{non-constexpr constructor '{{[BE]}}'}}
+#endif
     return true;
   }
   static_assert(check<A>(), "");
-  static_assert(check<B>(), ""); // expected-error {{constant}} expected-note {{in call}}
+  static_assert(check<B>(), "");
+#if __cplusplus <= 201703L
+  // expected-error@-2 {{constant}} expected-note@-2 {{in call}}
+#endif
   static_assert(check<C>(), "");
   static_assert(check<D>(), "");
-  static_assert(check<E>(), ""); // expected-error {{constant}} expected-note {{in call}}
+  static_assert(check<E>(), "");
+#if __cplusplus <= 201703L
+  // expected-error@-2 {{constant}} expected-note@-2 {{in call}}
+#endif
   static_assert(check<F>(), "");
 #endif
 
@@ -291,6 +334,22 @@ namespace dr1467 {  // dr1467: 3.7 c++11
 
     X x;
     X x2{x};
+
+    void f1(int);                                  // expected-note {{candidate function}}
+    void f1(std::initializer_list<long>) = delete; // expected-note {{candidate function has been explicitly deleted}}
+    void g1() { f1({42}); }                        // expected-error {{call to deleted function 'f1'}}
+
+    template <class T, class U>
+    struct Pair {
+      Pair(T, U);
+    };
+    struct String {
+      String(const char *);
+    };
+
+    void f2(Pair<const char *, const char *>);       // expected-note {{candidate function}}
+    void f2(std::initializer_list<String>) = delete; // expected-note {{candidate function has been explicitly deleted}}
+    void g2() { f2({"foo", "bar"}); }                // expected-error {{call to deleted function 'f2'}}
   } // dr_example
 
   namespace nonaggregate {
@@ -336,6 +395,46 @@ namespace dr1467 {  // dr1467: 3.7 c++11
     struct Value { Value(Pair); Value(TwoPairs); };
     void f() { Value{{{1,2},{3,4}}}; }
   }
+  namespace NonAmbiguous {
+  // The original implementation made this case ambigious due to the special
+  // handling of one element initialization lists.
+  void f(int(&&)[1]);
+  void f(unsigned(&&)[1]);
+
+  void g(unsigned i) {
+    f({i});
+  }
+  } // namespace NonAmbiguous
+
+#if __cplusplus >= 201103L
+  namespace StringLiterals {
+  // When the array size is 4 the call will attempt to bind an lvalue to an
+  // rvalue and fail. Therefore #2 will be called. (rsmith will bring this
+  // issue to CWG)
+  void f(const char(&&)[4]);              // expected-note 5 {{no known conversion}}
+  void f(const char(&&)[5]) = delete;     // expected-note 2 {{candidate function has been explicitly deleted}} expected-note 3 {{no known conversion}}
+  void f(const wchar_t(&&)[4]);           // expected-note 5 {{no known conversion}}
+  void f(const wchar_t(&&)[5]) = delete;  // expected-note {{candidate function has been explicitly deleted}} expected-note 4 {{no known conversion}}
+#if __cplusplus >= 202002L
+  void f2(const char8_t(&&)[4]);          // expected-note {{no known conversion}}
+  void f2(const char8_t(&&)[5]) = delete; // expected-note {{candidate function has been explicitly deleted}}
+#endif
+  void f(const char16_t(&&)[4]);          // expected-note 5 {{no known conversion}}
+  void f(const char16_t(&&)[5]) = delete; // expected-note {{candidate function has been explicitly deleted}} expected-note 4 {{no known conversion}}
+  void f(const char32_t(&&)[4]);          // expected-note 5 {{no known conversion}}
+  void f(const char32_t(&&)[5]) = delete; // expected-note {{candidate function has been explicitly deleted}} expected-note 4 {{no known conversion}}
+  void g() {
+    f({"abc"});       // expected-error {{call to deleted function 'f'}}
+    f({((("abc")))}); // expected-error {{call to deleted function 'f'}}
+    f({L"abc"});      // expected-error {{call to deleted function 'f'}}
+#if __cplusplus >= 202002L
+    f2({u8"abc"});    // expected-error {{call to deleted function 'f2'}}
+#endif
+    f({uR"(abc)"});   // expected-error {{call to deleted function 'f'}}
+    f({(UR"(abc)")}); // expected-error {{call to deleted function 'f'}}
+  }
+  } // namespace StringLiterals
+#endif
 } // dr1467
 
 namespace dr1490 {  // dr1490: 3.7 c++11

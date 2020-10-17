@@ -12,7 +12,7 @@
     check against.  It also checks that virtual bases work properly
 */
 
-// UNSUPPORTED: libcxxabi-no-exceptions
+// UNSUPPORTED: no-exceptions
 
 #include <exception>
 #include <stdlib.h>
@@ -176,7 +176,7 @@ void f5()
     }
 }
 
-int main()
+int main(int, char**)
 {
     try
     {
@@ -186,4 +186,6 @@ int main()
     catch (...)
     {
     }
+
+    return 0;
 }

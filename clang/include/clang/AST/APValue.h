@@ -13,12 +13,14 @@
 #ifndef LLVM_CLANG_AST_APVALUE_H
 #define LLVM_CLANG_AST_APVALUE_H
 
-#include "clang/Basic/FixedPoint.h"
 #include "clang/Basic/LLVM.h"
+#include "llvm/ADT/APFixedPoint.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"
+#include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/Support/AlignOf.h"
 
 namespace clang {
   class AddrLabelExpr;
@@ -32,6 +34,7 @@ namespace clang {
   struct PrintingPolicy;
   class Type;
   class ValueDecl;
+  class QualType;
 
 /// Symbolic representation of typeid(T) for some type T.
 class TypeInfoLValue {
@@ -53,6 +56,34 @@ public:
 
   void print(llvm::raw_ostream &Out, const PrintingPolicy &Policy) const;
 };
+
+/// Symbolic representation of a dynamic allocation.
+class DynamicAllocLValue {
+  unsigned Index;
+
+public:
+  DynamicAllocLValue() : Index(0) {}
+  explicit DynamicAllocLValue(unsigned Index) : Index(Index + 1) {}
+  unsigned getIndex() { return Index - 1; }
+
+  explicit operator bool() const { return Index != 0; }
+
+  void *getOpaqueValue() {
+    return reinterpret_cast<void *>(static_cast<uintptr_t>(Index)
+                                    << NumLowBitsAvailable);
+  }
+  static DynamicAllocLValue getFromOpaqueValue(void *Value) {
+    DynamicAllocLValue V;
+    V.Index = reinterpret_cast<uintptr_t>(Value) >> NumLowBitsAvailable;
+    return V;
+  }
+
+  static unsigned getMaxIndex() {
+    return (std::numeric_limits<unsigned>::max() >> NumLowBitsAvailable) - 1;
+  }
+
+  static constexpr int NumLowBitsAvailable = 3;
+};
 }
 
 namespace llvm {
@@ -67,6 +98,17 @@ template<> struct PointerLikeTypeTraits<clang::TypeInfoLValue> {
   // to include Type.h.
   static constexpr int NumLowBitsAvailable = 3;
 };
+
+template<> struct PointerLikeTypeTraits<clang::DynamicAllocLValue> {
+  static void *getAsVoidPointer(clang::DynamicAllocLValue V) {
+    return V.getOpaqueValue();
+  }
+  static clang::DynamicAllocLValue getFromVoidPointer(void *P) {
+    return clang::DynamicAllocLValue::getFromOpaqueValue(P);
+  }
+  static constexpr int NumLowBitsAvailable =
+      clang::DynamicAllocLValue::NumLowBitsAvailable;
+};
 }
 
 namespace clang {
@@ -74,6 +116,7 @@ namespace clang {
 /// [APSInt] [APFloat], [Complex APSInt] [Complex APFloat], [Expr + Offset],
 /// [Vector: N * APValue], [Array: N * APValue]
 class APValue {
+  typedef llvm::APFixedPoint APFixedPoint;
   typedef llvm::APSInt APSInt;
   typedef llvm::APFloat APFloat;
 public:
@@ -97,14 +140,18 @@ public:
   };
 
   class LValueBase {
-    typedef llvm::PointerUnion<const ValueDecl *, const Expr *, TypeInfoLValue>
+    typedef llvm::PointerUnion<const ValueDecl *, const Expr *, TypeInfoLValue,
+                               DynamicAllocLValue>
         PtrTy;
 
   public:
     LValueBase() : Local{} {}
     LValueBase(const ValueDecl *P, unsigned I = 0, unsigned V = 0);
     LValueBase(const Expr *P, unsigned I = 0, unsigned V = 0);
+    static LValueBase getDynamicAlloc(DynamicAllocLValue LV, QualType Type);
     static LValueBase getTypeInfo(TypeInfoLValue LV, QualType TypeInfo);
+
+    void Profile(llvm::FoldingSetNodeID &ID) const;
 
     template <class T>
     bool is() const { return Ptr.is<T>(); }
@@ -124,12 +171,14 @@ public:
     unsigned getCallIndex() const;
     unsigned getVersion() const;
     QualType getTypeInfoType() const;
+    QualType getDynamicAllocType() const;
 
     friend bool operator==(const LValueBase &LHS, const LValueBase &RHS);
     friend bool operator!=(const LValueBase &LHS, const LValueBase &RHS) {
       return !(LHS == RHS);
     }
     friend llvm::hash_code hash_value(const LValueBase &Base);
+    friend struct llvm::DenseMapInfo<LValueBase>;
 
   private:
     PtrTy Ptr;
@@ -140,6 +189,8 @@ public:
       LocalState Local;
       /// The type std::type_info, if this is a TypeInfoLValue.
       void *TypeInfoType;
+      /// The QualType, if this is a DynamicAllocLValue.
+      void *DynamicAllocType;
     };
   };
 
@@ -155,8 +206,7 @@ public:
 
   public:
     LValuePathEntry() : Value() {}
-    LValuePathEntry(BaseOrMemberType BaseOrMember)
-        : Value{reinterpret_cast<uintptr_t>(BaseOrMember.getOpaqueValue())} {}
+    LValuePathEntry(BaseOrMemberType BaseOrMember);
     static LValuePathEntry ArrayIndex(uint64_t Index) {
       LValuePathEntry Result;
       Result.Value = Index;
@@ -168,6 +218,8 @@ public:
           reinterpret_cast<void *>(Value));
     }
     uint64_t getAsArrayIndex() const { return Value; }
+
+    void Profile(llvm::FoldingSetNodeID &ID) const;
 
     friend bool operator==(LValuePathEntry A, LValuePathEntry B) {
       return A.Value == B.Value;
@@ -258,7 +310,7 @@ public:
     MakeComplexFloat(); setComplexFloat(std::move(R), std::move(I));
   }
   APValue(const APValue &RHS);
-  APValue(APValue &&RHS) : Kind(None) { swap(RHS); }
+  APValue(APValue &&RHS);
   APValue(LValueBase B, const CharUnits &O, NoLValuePath N,
           bool IsNullPtr = false)
       : Kind(None) {
@@ -293,6 +345,9 @@ public:
     return Result;
   }
 
+  APValue &operator=(const APValue &RHS);
+  APValue &operator=(APValue &&RHS);
+
   ~APValue() {
     if (Kind != None && Kind != Indeterminate)
       DestroyDataAndMakeUninit();
@@ -307,6 +362,11 @@ public:
 
   /// Swaps the contents of this and the given APValue.
   void swap(APValue &RHS);
+
+  /// profile this value. There is no guarantee that values of different
+  /// types will not produce the same profiled value, so the type should
+  /// typically also be profiled if it's not implied by the context.
+  void Profile(llvm::FoldingSetNodeID &ID) const;
 
   ValueKind getKind() const { return Kind; }
 
@@ -328,7 +388,7 @@ public:
   bool isAddrLabelDiff() const { return Kind == AddrLabelDiff; }
 
   void dump() const;
-  void dump(raw_ostream &OS) const;
+  void dump(raw_ostream &OS, const ASTContext &Context) const;
 
   void printPretty(raw_ostream &OS, const ASTContext &Ctx, QualType Ty) const;
   std::string getAsString(const ASTContext &Ctx, QualType Ty) const;
@@ -543,12 +603,6 @@ public:
                         const AddrLabelExpr* RHSExpr) {
     ((AddrLabelDiffData*)(char*)Data.buffer)->LHSExpr = LHSExpr;
     ((AddrLabelDiffData*)(char*)Data.buffer)->RHSExpr = RHSExpr;
-  }
-
-  /// Assign by swapping from a copy of the RHS.
-  APValue &operator=(APValue RHS) {
-    swap(RHS);
-    return *this;
   }
 
 private:

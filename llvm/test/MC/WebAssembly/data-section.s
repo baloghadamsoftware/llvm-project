@@ -35,8 +35,9 @@ test0:
 # BIN-NEXT:   - Type:            TYPE
 # BIN-NEXT:     Signatures:
 # BIN-NEXT:       - Index:           0
-# BIN-NEXT:         ReturnType:      I32
 # BIN-NEXT:         ParamTypes:      []
+# BIN-NEXT:         ReturnTypes:
+# BIN-NEXT:           - I32
 # BIN-NEXT:   - Type:            IMPORT
 # BIN-NEXT:     Imports:
 # BIN-NEXT:       - Module:          env
@@ -48,6 +49,7 @@ test0:
 # BIN-NEXT:         Field:           __indirect_function_table
 # BIN-NEXT:         Kind:            TABLE
 # BIN-NEXT:         Table:
+# BIN-NEXT:           Index:           0
 # BIN-NEXT:           ElemType:        FUNCREF
 # BIN-NEXT:           Limits:
 # BIN-NEXT:             Initial:         0x00000000

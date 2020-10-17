@@ -33,7 +33,6 @@ fun:dfsan_flush=discard
 # glibc
 ###############################################################################
 fun:malloc=discard
-fun:realloc=discard
 fun:free=discard
 
 # Functions that return a value that depends on the input, but the output might
@@ -184,6 +183,7 @@ fun:strtoull=custom
 
 # Functions that produce an output that is computed from the input, but is not
 # necessarily data dependent.
+fun:bcmp=custom
 fun:memchr=custom
 fun:memcmp=custom
 fun:strcasecmp=custom
@@ -192,6 +192,7 @@ fun:strcmp=custom
 fun:strlen=custom
 fun:strncasecmp=custom
 fun:strncmp=custom
+fun:strpbrk=custom
 fun:strrchr=custom
 fun:strstr=custom
 

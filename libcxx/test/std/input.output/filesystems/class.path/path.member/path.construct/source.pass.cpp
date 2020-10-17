@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
 
 // <filesystem>
 
@@ -18,20 +18,20 @@
 //      path(InputIterator first, InputIterator last);
 
 
-#include "filesystem_include.hpp"
+#include "filesystem_include.h"
 #include <type_traits>
 #include <cassert>
 
 #include "test_macros.h"
 #include "test_iterators.h"
 #include "min_allocator.h"
-#include "filesystem_test_helper.hpp"
+#include "filesystem_test_helper.h"
 
 
 template <class CharT, class ...Args>
 void RunTestCaseImpl(MultiStringType const& MS, Args... args) {
   using namespace fs;
-  const char* Expect = MS;
+  const fs::path::value_type* Expect = MS;
   const CharT* TestPath = MS;
   const CharT* TestPathEnd = StrEnd(TestPath);
   const std::size_t Size = TestPathEnd - TestPath;

@@ -10,7 +10,7 @@ target triple = "x86_64-apple-macosx10.14.0"
 
 ; CHECK-LABEL: define {{.*}}@foo(
 ; CHECK-NOT: foo.cold.1
-define void @foo(i32, %struct.__jmp_buf_tag*) {
+define void @foo(i32, %struct.__jmp_buf_tag*) "hot-cold-split" {
   %3 = icmp eq i32 %0, 0
   tail call void @_Z10sideeffectv()
   br i1 %3, label %5, label %4
@@ -23,11 +23,29 @@ define void @foo(i32, %struct.__jmp_buf_tag*) {
   ret void
 }
 
+; Don't outline within a noreturn function.
+
+; CHECK: define {{.*}}@xpc_objc_main(i32 {{.*}}) [[XPC_OBJC_MAIN_ATTRS:#[0-9]+]]
+; CHECK-NOT: xpc_objc_main.cold.1
+define void @xpc_objc_main(i32) noreturn {
+  %2 = icmp eq i32 %0, 0
+  tail call void @_Z10sideeffectv()
+  br i1 %2, label %4, label %3
+
+; <label>:3:                                      ; preds = %2
+  call void @_Z10sideeffectv()
+  unreachable
+
+; <label>:4:                                      ; preds = %2
+  ; Crash with an error message, "not supposed to return".
+  unreachable
+}
+
 ; Do outline noreturn calls marked cold.
 
 ; CHECK-LABEL: define {{.*}}@bar(
 ; CHECK: call {{.*}}@bar.cold.1(
-define void @bar(i32) {
+define void @bar(i32) "hot-cold-split" {
   %2 = icmp eq i32 %0, 0
   tail call void @_Z10sideeffectv()
   br i1 %2, label %sink, label %exit
@@ -45,7 +63,7 @@ exit:
 
 ; CHECK-LABEL: define {{.*}}@baz(
 ; CHECK: call {{.*}}@baz.cold.1(
-define void @baz(i32, %struct.__jmp_buf_tag*) {
+define void @baz(i32, %struct.__jmp_buf_tag*) "hot-cold-split" {
   %3 = icmp eq i32 %0, 0
   tail call void @_Z10sideeffectv()
   br i1 %3, label %5, label %4
@@ -61,6 +79,8 @@ define void @baz(i32, %struct.__jmp_buf_tag*) {
 
 ; CHECK-LABEL: define {{.*}}@bar.cold.1(
 ; CHECK: call {{.*}}@llvm.trap(
+
+; CHECK: attributes [[XPC_OBJC_MAIN_ATTRS]] = { noreturn }
 
 declare void @sink() cold
 

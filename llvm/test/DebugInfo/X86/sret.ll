@@ -1,18 +1,21 @@
 ; RUN: llc -split-dwarf-file=foo.dwo -O0 %s -mtriple=x86_64-unknown-linux-gnu -filetype=obj -o %t
-; RUN: llvm-dwarfdump -v -all %t | FileCheck %s --check-prefix=CHECK-DWO
+; RUN: llvm-dwarfdump -debug-info %t | FileCheck %s --check-prefix=CHECK-DWO
 
 ; Based on the debuginfo-tests/sret.cpp code.
 
-; CHECK-DWO: DW_AT_GNU_dwo_id [DW_FORM_data8] (0x51ac5644b1937aa1)
-; CHECK-DWO: DW_AT_GNU_dwo_id [DW_FORM_data8] (0x51ac5644b1937aa1)
+; CHECK-DWO: DW_AT_GNU_dwo_id (0xa58a336e896549f1)
+; CHECK-DWO: DW_AT_GNU_dwo_id (0xa58a336e896549f1)
 
-; RUN: llc -O0 -fast-isel=true -mtriple=x86_64-apple-darwin -filetype=obj -o - %s | llvm-dwarfdump -v - | FileCheck %s
-; RUN: llc -O0 -fast-isel=false -mtriple=x86_64-apple-darwin -filetype=obj -o - %s | llvm-dwarfdump -v - | FileCheck %s
+; RUN: llc -O0 -fast-isel=true -mtriple=x86_64-apple-darwin -filetype=obj -o - %s | llvm-dwarfdump -debug-info - | FileCheck -check-prefixes=CHECK,FASTISEL %s
+; RUN: llc -O0 -fast-isel=false -mtriple=x86_64-apple-darwin -filetype=obj -o - %s | llvm-dwarfdump -debug-info - | FileCheck -check-prefixes=CHECK,SDAG %s
 ; CHECK: _ZN1B9AInstanceEv
 ; CHECK: DW_TAG_variable
-; CHECK-NEXT:   DW_AT_location [DW_FORM_sec_offset] (0x00000000
-; CHECK-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg5 RDI+0
-; CHECK-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg6 RBP-24, DW_OP_deref)
+; CHECK-NEXT:   DW_AT_location (0x00000000
+; FASTISEL-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg6 RBP-32, DW_OP_deref
+; FASTISEL-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg5 RDI+0
+; FASTISEL-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg6 RBP-32, DW_OP_deref)
+; SDAG-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg5 RDI+0
+; SDAG-NEXT:     [{{.*}}, {{.*}}): DW_OP_breg6 RBP-32, DW_OP_deref)
 ; CHECK-NEXT:   DW_AT_name {{.*}}"a"
 
 %class.A = type { i32 (...)**, i32 }
@@ -259,11 +262,11 @@ eh.resume:                                        ; preds = %lpad
 ; Function Attrs: nobuiltin nounwind
 declare void @_ZdlPv(i8*) #4
 
-attributes #0 = { nounwind uwtable "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #0 = { nounwind uwtable "less-precise-fpmad"="false" "frame-pointer"="all" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { nounwind readnone }
-attributes #2 = { uwtable "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #2 = { uwtable "less-precise-fpmad"="false" "frame-pointer"="all" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #3 = { noinline noreturn nounwind }
-attributes #4 = { nobuiltin nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #4 = { nobuiltin nounwind "less-precise-fpmad"="false" "frame-pointer"="all" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #5 = { noreturn nounwind }
 attributes #6 = { nounwind }
 attributes #7 = { builtin nounwind }

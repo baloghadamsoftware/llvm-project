@@ -19,63 +19,59 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DebugCounter.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils/AssumeBundleBuilder.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
 
 #define DEBUG_TYPE "dce"
 
-STATISTIC(DIEEliminated, "Number of insts removed by DIE pass");
 STATISTIC(DCEEliminated, "Number of insts removed");
 DEBUG_COUNTER(DCECounter, "dce-transform",
               "Controls which instructions are eliminated");
 
+//===--------------------------------------------------------------------===//
+// RedundantDbgInstElimination pass implementation
+//
+
 namespace {
-  //===--------------------------------------------------------------------===//
-  // DeadInstElimination pass implementation
-  //
-  struct DeadInstElimination : public BasicBlockPass {
-    static char ID; // Pass identification, replacement for typeid
-    DeadInstElimination() : BasicBlockPass(ID) {
-      initializeDeadInstEliminationPass(*PassRegistry::getPassRegistry());
-    }
-    bool runOnBasicBlock(BasicBlock &BB) override {
-      if (skipBasicBlock(BB))
-        return false;
-      auto *TLIP = getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
-      TargetLibraryInfo *TLI = TLIP ? &TLIP->getTLI() : nullptr;
-      bool Changed = false;
-      for (BasicBlock::iterator DI = BB.begin(); DI != BB.end(); ) {
-        Instruction *Inst = &*DI++;
-        if (isInstructionTriviallyDead(Inst, TLI)) {
-          if (!DebugCounter::shouldExecute(DCECounter))
-            continue;
-          salvageDebugInfo(*Inst);
-          Inst->eraseFromParent();
-          Changed = true;
-          ++DIEEliminated;
-        }
-      }
-      return Changed;
-    }
+struct RedundantDbgInstElimination : public FunctionPass {
+  static char ID; // Pass identification, replacement for typeid
+  RedundantDbgInstElimination() : FunctionPass(ID) {
+    initializeRedundantDbgInstEliminationPass(*PassRegistry::getPassRegistry());
+  }
+  bool runOnFunction(Function &F) override {
+    if (skipFunction(F))
+      return false;
+    bool Changed = false;
+    for (auto &BB : F)
+      Changed |= RemoveRedundantDbgInstrs(&BB);
+    return Changed;
+  }
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
-      AU.setPreservesCFG();
-    }
-  };
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesCFG();
+  }
+};
 }
 
-char DeadInstElimination::ID = 0;
-INITIALIZE_PASS(DeadInstElimination, "die",
-                "Dead Instruction Elimination", false, false)
+char RedundantDbgInstElimination::ID = 0;
+INITIALIZE_PASS(RedundantDbgInstElimination, "redundant-dbg-inst-elim",
+                "Redundant Dbg Instruction Elimination", false, false)
 
-Pass *llvm::createDeadInstEliminationPass() {
-  return new DeadInstElimination();
+Pass *llvm::createRedundantDbgInstEliminationPass() {
+  return new RedundantDbgInstElimination();
 }
+
+//===--------------------------------------------------------------------===//
+// DeadCodeElimination pass implementation
+//
 
 static bool DCEInstruction(Instruction *I,
                            SmallSetVector<Instruction *, 16> &WorkList,
@@ -85,6 +81,7 @@ static bool DCEInstruction(Instruction *I,
       return false;
 
     salvageDebugInfo(*I);
+    salvageKnowledge(I);
 
     // Null out all of the instruction's operands to see if any operand becomes
     // dead as we go.
@@ -154,7 +151,7 @@ struct DCELegacyPass : public FunctionPass {
       return false;
 
     auto *TLIP = getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
-    TargetLibraryInfo *TLI = TLIP ? &TLIP->getTLI() : nullptr;
+    TargetLibraryInfo *TLI = TLIP ? &TLIP->getTLI(F) : nullptr;
 
     return eliminateDeadCode(F, TLI);
   }

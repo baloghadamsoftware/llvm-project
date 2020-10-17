@@ -50,6 +50,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -371,7 +372,7 @@ BCECmpBlock visitCmpBlock(Value *const Val, BasicBlock *const Block,
   } else {
     // In this case, we expect a constant incoming value (the comparison is
     // chained).
-    const auto *const Const = dyn_cast<ConstantInt>(Val);
+    const auto *const Const = cast<ConstantInt>(Val);
     LLVM_DEBUG(dbgs() << "const\n");
     if (!Const->isZero()) return {};
     LLVM_DEBUG(dbgs() << "false\n");
@@ -897,7 +898,7 @@ public:
 
   bool runOnFunction(Function &F) override {
     if (skipFunction(F)) return false;
-    const auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    const auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     const auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     // MergeICmps does not need the DominatorTree, but we update it if it's
     // already available.

@@ -31,11 +31,7 @@ protected:
     Style.Language = FormatStyle::LK_ObjC;
   }
 
-  enum StatusCheck {
-    SC_ExpectComplete,
-    SC_ExpectIncomplete,
-    SC_DoNotCheck
-  };
+  enum StatusCheck { SC_ExpectComplete, SC_ExpectIncomplete, SC_DoNotCheck };
 
   std::string format(llvm::StringRef Code,
                      StatusCheck CheckComplete = SC_ExpectComplete) {
@@ -69,24 +65,28 @@ protected:
 };
 
 TEST(FormatTestObjCStyle, DetectsObjCInHeaders) {
-  auto Style = getStyle("LLVM", "a.h", "none", "@interface\n"
-                                               "- (id)init;");
+  auto Style = getStyle("LLVM", "a.h", "none",
+                        "@interface\n"
+                        "- (id)init;");
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_ObjC, Style->Language);
 
-  Style = getStyle("LLVM", "a.h", "none", "@interface\n"
-                                          "+ (id)init;");
+  Style = getStyle("LLVM", "a.h", "none",
+                   "@interface\n"
+                   "+ (id)init;");
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_ObjC, Style->Language);
 
-  Style = getStyle("LLVM", "a.h", "none", "@interface\n"
-                                          "@end\n"
-                                          "//comment");
+  Style = getStyle("LLVM", "a.h", "none",
+                   "@interface\n"
+                   "@end\n"
+                   "//comment");
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_ObjC, Style->Language);
 
-  Style = getStyle("LLVM", "a.h", "none", "@interface\n"
-                                          "@end //comment");
+  Style = getStyle("LLVM", "a.h", "none",
+                   "@interface\n"
+                   "@end //comment");
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_ObjC, Style->Language);
 
@@ -113,13 +113,12 @@ TEST(FormatTestObjCStyle, DetectsObjCInHeaders) {
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_Cpp, Style->Language);
 
-  Style =
-      getStyle("{}", "a.h", "none", "typedef NS_ENUM(int, Foo) {};\n");
+  Style = getStyle("{}", "a.h", "none", "typedef NS_ENUM(int, Foo) {};\n");
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_ObjC, Style->Language);
 
-  Style = getStyle("{}", "a.h", "none",
-                   "typedef NS_CLOSED_ENUM(int, Foo) {};\n");
+  Style =
+      getStyle("{}", "a.h", "none", "typedef NS_CLOSED_ENUM(int, Foo) {};\n");
   ASSERT_TRUE((bool)Style);
   EXPECT_EQ(FormatStyle::LK_ObjC, Style->Language);
 
@@ -207,7 +206,7 @@ TEST_F(FormatTestObjC, FormatObjCAutoreleasepool) {
                "  f();\n"
                "}\n");
   Style.BreakBeforeBraces = FormatStyle::BS_Custom;
-  Style.BraceWrapping.AfterControlStatement = true;
+  Style.BraceWrapping.AfterControlStatement = FormatStyle::BWACS_Always;
   verifyFormat("@autoreleasepool\n"
                "{\n"
                "  f();\n"
@@ -237,7 +236,7 @@ TEST_F(FormatTestObjC, FormatObjCSynchronized) {
                "  f();\n"
                "}\n");
   Style.BreakBeforeBraces = FormatStyle::BS_Custom;
-  Style.BraceWrapping.AfterControlStatement = true;
+  Style.BraceWrapping.AfterControlStatement = FormatStyle::BWACS_Always;
   verifyFormat("@synchronized(self)\n"
                "{\n"
                "  f();\n"
@@ -329,6 +328,18 @@ TEST_F(FormatTestObjC, FormatObjCInterface) {
                "+ (id)init;\n"
                "@end");
 
+  verifyFormat("@interface Foo<Bar : Baz <Blech>> : Xyzzy <Corge> <Quux> {\n"
+               "  int _i;\n"
+               "}\n"
+               "+ (id)init;\n"
+               "@end");
+
+  verifyFormat("@interface Foo : Bar <Baz> <Blech>\n"
+               "@end");
+
+  verifyFormat("@interface Foo : Bar <Baz> <Blech, Xyzzy, Corge>\n"
+               "@end");
+
   verifyFormat("@interface Foo (HackStuff) {\n"
                "  int _i;\n"
                "}\n"
@@ -414,6 +425,10 @@ TEST_F(FormatTestObjC, FormatObjCInterface) {
                "    fffffffffffff,\n"
                "    fffffffffffff> {\n"
                "}");
+  verifyFormat("@interface ggggggggggggg\n"
+               "    : ggggggggggggg <ggggggggggggg>\n"
+               "      <ggggggggggggg>\n"
+               "@end");
 }
 
 TEST_F(FormatTestObjC, FormatObjCImplementation) {
@@ -603,7 +618,7 @@ TEST_F(FormatTestObjC, FormatObjCMethodDeclarations) {
                "               bbb:(d)cccc;");
   verifyFormat("- (void)drawRectOn:(id)surface ofSize:(aaa)height:(bbb)width;");
 
-  // BraceWrapping AfterFunction is respected for ObjC methods 
+  // BraceWrapping AfterFunction is respected for ObjC methods
   Style = getGoogleStyle(FormatStyle::LK_ObjC);
   Style.BreakBeforeBraces = FormatStyle::BS_Custom;
   Style.BraceWrapping.AfterFunction = true;
@@ -946,14 +961,16 @@ TEST_F(FormatTestObjC, FormatObjCMethodExpr) {
   verifyFormat("[self performSelector:@selector(loadAccessories)\n"
                "        withObjectOnMainThread:nil\n"
                "                 waitUntilDone:false];");
-  verifyFormat("[aaaaaaaaaaaaaaaaaaaaaaaaa\n"
-               "        performSelectorOnMainThread:@selector(loadAccessories)\n"
-               "                         withObject:nil\n"
-               "                      waitUntilDone:false];");
-  verifyFormat("[self // force wrapping\n"
-               "        performSelectorOnMainThread:@selector(loadAccessories)\n"
-               "                         withObject:nil\n"
-               "                      waitUntilDone:false];");
+  verifyFormat(
+      "[aaaaaaaaaaaaaaaaaaaaaaaaa\n"
+      "        performSelectorOnMainThread:@selector(loadAccessories)\n"
+      "                         withObject:nil\n"
+      "                      waitUntilDone:false];");
+  verifyFormat(
+      "[self // force wrapping\n"
+      "        performSelectorOnMainThread:@selector(loadAccessories)\n"
+      "                         withObject:nil\n"
+      "                      waitUntilDone:false];");
 }
 
 TEST_F(FormatTestObjC, ObjCAt) {
@@ -1022,6 +1039,12 @@ TEST_F(FormatTestObjC, ObjCSnippets) {
 
   verifyFormat("@property(assign, nonatomic) CGFloat hoverAlpha;");
   verifyFormat("@property(assign, getter=isEditable) BOOL editable;");
+
+  verifyFormat("extern UIWindow *MainWindow(void) "
+               "NS_SWIFT_NAME(getter:MyHelper.mainWindow());");
+
+  verifyFormat("extern UIWindow *MainWindow(void) "
+               "CF_SWIFT_NAME(getter:MyHelper.mainWindow());");
 
   Style.ColumnLimit = 50;
   verifyFormat("@interface Foo\n"
@@ -1374,7 +1397,7 @@ TEST_F(FormatTestObjC, DisambiguatesCallsFromCppLambdas) {
   // verifyFormat("x = ([a foo:bar] >> b->c == 'd');");
 }
 
-TEST_F(FormatTestObjC,  DisambiguatesCallsFromStructuredBindings) {
+TEST_F(FormatTestObjC, DisambiguatesCallsFromStructuredBindings) {
   verifyFormat("int f() {\n"
                "  if (a && [f arg])\n"
                "    return 0;\n"
@@ -1396,6 +1419,60 @@ TEST_F(FormatTestObjC,  DisambiguatesCallsFromStructuredBindings) {
       "  for (auto /**/ const /**/ volatile /**/ && /**/ [elem] : list)\n"
       "    return 0;\n"
       "}");
+}
+
+TEST_F(FormatTestObjC, BreakLineBeforeNestedBlockParam) {
+  Style = getGoogleStyle(FormatStyle::LK_ObjC);
+  Style.ObjCBreakBeforeNestedBlockParam = false;
+  Style.ColumnLimit = 0;
+
+  verifyFormat("[self.test1 t:self callback:^(typeof(self) self, NSNumber *u, "
+               "NSNumber *v) {\n"
+               "  u = v;\n"
+               "}]");
+
+  verifyFormat("[self.test1 t:self w:self callback:^(typeof(self) self, "
+               "NSNumber *u, NSNumber *v) {\n"
+               "  u = v;\n"
+               "}]");
+
+  verifyFormat("[self.test1 t:self w:self callback:^(typeof(self) self, "
+               "NSNumber *u, NSNumber *v) {\n"
+               "  u = c;\n"
+               "} w:self callback2:^(typeof(self) self, NSNumber *a, NSNumber "
+               "*b, NSNumber *c) {\n"
+               "  b = c;\n"
+               "}]");
+  verifyFormat("[self.test1 t:self w:self callback:^(typeof(self) self, "
+               "NSNumber *u, NSNumber *v) {\n"
+               "  u = v;\n"
+               "} z:self]");
+
+  Style.ColumnLimit = 80;
+  verifyFormat(
+      "[self.test_method a:self b:self\n"
+      "           callback:^(typeof(self) self, NSNumber *u, NSNumber *v) {\n"
+      "             u = v;\n"
+      "           }]");
+}
+
+TEST_F(FormatTestObjC, IfNotUnlikely) {
+  Style = getGoogleStyle(FormatStyle::LK_ObjC);
+
+  verifyFormat("if (argc < 5) [obj func:arg];");
+  verifyFormat("if (argc < 5) [[obj1 method1:arg1] method2:arg2];");
+  verifyFormat("if (argc < 5) [[foo bar] baz:i[0]];");
+  verifyFormat("if (argc < 5) [[foo bar] baz:i[0]][1];");
+
+  verifyFormat("if (argc < 5)\n"
+               "  [obj func:arg];\n"
+               "else\n"
+               "  [obj func:arg2];");
+
+  verifyFormat("if (argc < 5) [[unlikely]]\n"
+               "  [obj func:arg];\n"
+               "else [[likely]]\n"
+               "  [obj func:arg2];");
 }
 
 } // end namespace

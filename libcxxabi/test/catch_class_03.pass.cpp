@@ -12,7 +12,7 @@
     check against.
 */
 
-// UNSUPPORTED: libcxxabi-no-exceptions
+// UNSUPPORTED: no-exceptions
 
 #include <exception>
 #include <stdlib.h>
@@ -181,7 +181,7 @@ void f4()
     }
 }
 
-int main()
+int main(int, char**)
 {
     try
     {
@@ -195,4 +195,6 @@ int main()
     assert(C1::count == 0);
     assert(C2::count == 0);
     assert(B::count == 0);
+
+    return 0;
 }

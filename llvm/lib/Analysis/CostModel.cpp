@@ -20,6 +20,7 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -34,7 +35,10 @@ static cl::opt<TargetTransformInfo::TargetCostKind> CostKind(
                clEnumValN(TargetTransformInfo::TCK_Latency,
                           "latency", "Instruction latency"),
                clEnumValN(TargetTransformInfo::TCK_CodeSize,
-                          "code-size", "Code size")));
+                          "code-size", "Code size"),
+               clEnumValN(TargetTransformInfo::TCK_SizeAndLatency,
+                          "size-latency", "Code size and latency")));
+
 
 #define CM_NAME "cost-model"
 #define DEBUG_TYPE CM_NAME

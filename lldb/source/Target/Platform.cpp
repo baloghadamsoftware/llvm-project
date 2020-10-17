@@ -1,4 +1,4 @@
-//===-- Platform.cpp --------------------------------------------*- C++ -*-===//
+//===-- Platform.cpp ------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,9 +12,6 @@
 #include <memory>
 #include <vector>
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-
 #include "lldb/Breakpoint/BreakpointIDList.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/Debugger.h"
@@ -26,6 +23,7 @@
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Host/OptionParser.h"
+#include "lldb/Interpreter/OptionValueFileSpec.h"
 #include "lldb/Interpreter/OptionValueProperties.h"
 #include "lldb/Interpreter/Property.h"
 #include "lldb/Symbol/ObjectFile.h"
@@ -39,8 +37,8 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/StructuredData.h"
-
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 
 // Define these constants from POSIX mman.h rather than include the file so
 // that they will be correct even when compiled on Linux.
@@ -63,14 +61,12 @@ const char *Platform::GetHostPlatformName() { return "host"; }
 
 namespace {
 
-static constexpr PropertyDefinition g_properties[] = {
 #define LLDB_PROPERTIES_platform
-#include "Properties.inc"
-};
+#include "TargetProperties.inc"
 
 enum {
 #define LLDB_PROPERTIES_platform
-#include "PropertiesEnum.inc"
+#include "TargetPropertiesEnum.inc"
 };
 
 } // namespace
@@ -82,26 +78,27 @@ ConstString PlatformProperties::GetSettingName() {
 
 PlatformProperties::PlatformProperties() {
   m_collection_sp = std::make_shared<OptionValueProperties>(GetSettingName());
-  m_collection_sp->Initialize(g_properties);
+  m_collection_sp->Initialize(g_platform_properties);
 
   auto module_cache_dir = GetModuleCacheDirectory();
   if (module_cache_dir)
     return;
 
   llvm::SmallString<64> user_home_dir;
-  if (!llvm::sys::path::home_directory(user_home_dir))
+  if (!FileSystem::Instance().GetHomeDirectory(user_home_dir))
     return;
 
   module_cache_dir = FileSpec(user_home_dir.c_str());
   module_cache_dir.AppendPathComponent(".lldb");
   module_cache_dir.AppendPathComponent("module_cache");
+  SetDefaultModuleCacheDirectory(module_cache_dir);
   SetModuleCacheDirectory(module_cache_dir);
 }
 
 bool PlatformProperties::GetUseModuleCache() const {
   const auto idx = ePropertyUseModuleCache;
   return m_collection_sp->GetPropertyAtIndexAsBoolean(
-      nullptr, idx, g_properties[idx].default_uint_value != 0);
+      nullptr, idx, g_platform_properties[idx].default_uint_value != 0);
 }
 
 bool PlatformProperties::SetUseModuleCache(bool use_module_cache) {
@@ -117,6 +114,14 @@ FileSpec PlatformProperties::GetModuleCacheDirectory() const {
 bool PlatformProperties::SetModuleCacheDirectory(const FileSpec &dir_spec) {
   return m_collection_sp->SetPropertyAtIndexAsFileSpec(
       nullptr, ePropertyModuleCacheDirectory, dir_spec);
+}
+
+void PlatformProperties::SetDefaultModuleCacheDirectory(
+    const FileSpec &dir_spec) {
+  auto f_spec_opt = m_collection_sp->GetPropertyAtIndexAsOptionValueFileSpec(
+        nullptr, false, ePropertyModuleCacheDirectory);
+  assert(f_spec_opt);
+  f_spec_opt->SetDefaultValue(dir_spec);
 }
 
 /// Get the native host platform plug-in.
@@ -386,7 +391,7 @@ Platform::Platform(bool is_host)
       m_rsync_opts(), m_rsync_prefix(), m_supports_ssh(false), m_ssh_opts(),
       m_ignores_remote_hostname(false), m_trap_handlers(),
       m_calculated_trap_handlers(false),
-      m_module_cache(llvm::make_unique<ModuleCache>()) {
+      m_module_cache(std::make_unique<ModuleCache>()) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT));
   LLDB_LOGF(log, "%p Platform::Platform()", static_cast<void *>(this));
 }
@@ -408,7 +413,7 @@ void Platform::GetStatus(Stream &strm) {
   if (arch.IsValid()) {
     if (!arch.GetTriple().str().empty()) {
       strm.Printf("    Triple: ");
-      arch.DumpTriple(strm);
+      arch.DumpTriple(strm.AsRawOstream());
       strm.EOL();
     }
   }
@@ -422,9 +427,6 @@ void Platform::GetStatus(Stream &strm) {
 
     strm.EOL();
   }
-
-  if (GetOSKernelDescription(s))
-    strm.Printf("    Kernel: %s\n", s.c_str());
 
   if (IsHost()) {
     strm.Printf("  Hostname: %s\n", GetHostname());
@@ -445,6 +447,9 @@ void Platform::GetStatus(Stream &strm) {
 
   if (!specific_info.empty())
     strm.Printf("Platform-specific connection: %s\n", specific_info.c_str());
+
+  if (GetOSKernelDescription(s))
+    strm.Printf("    Kernel: %s\n", s.c_str());
 }
 
 llvm::VersionTuple Platform::GetOSVersion(Process *process) {
@@ -1146,10 +1151,10 @@ Platform::DebugProcess(ProcessLaunchInfo &launch_info, Debugger &debugger,
         process_sp->SetShouldDetach(false);
 
         // If we didn't have any file actions, the pseudo terminal might have
-        // been used where the slave side was given as the file to open for
+        // been used where the secondary side was given as the file to open for
         // stdin/out/err after we have already opened the master so we can
         // read/write stdin/out/err.
-        int pty_fd = launch_info.GetPTY().ReleaseMasterFileDescriptor();
+        int pty_fd = launch_info.GetPTY().ReleasePrimaryFileDescriptor();
         if (pty_fd != PseudoTerminal::invalid_fd) {
           process_sp->SetSTDIOFileDescriptor(pty_fd);
         }
@@ -1222,21 +1227,21 @@ Status Platform::PutFile(const FileSpec &source, const FileSpec &destination,
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_PLATFORM));
   LLDB_LOGF(log, "[PutFile] Using block by block transfer....\n");
 
-  uint32_t source_open_options =
+  auto source_open_options =
       File::eOpenOptionRead | File::eOpenOptionCloseOnExec;
   namespace fs = llvm::sys::fs;
   if (fs::is_symlink_file(source.GetPath()))
     source_open_options |= File::eOpenOptionDontFollowSymlinks;
 
-  File source_file;
-  Status error = FileSystem::Instance().Open(
-      source_file, source, source_open_options, lldb::eFilePermissionsUserRW);
-  uint32_t permissions = source_file.GetPermissions(error);
+  auto source_file = FileSystem::Instance().Open(source, source_open_options,
+                                                 lldb::eFilePermissionsUserRW);
+  if (!source_file)
+    return Status(source_file.takeError());
+  Status error;
+  uint32_t permissions = source_file.get()->GetPermissions(error);
   if (permissions == 0)
     permissions = lldb::eFilePermissionsFileDefault;
 
-  if (!source_file.IsValid())
-    return Status("PutFile: unable to open source file");
   lldb::user_id_t dest_file = OpenFile(
       destination, File::eOpenOptionCanCreate | File::eOpenOptionWrite |
                        File::eOpenOptionTruncate | File::eOpenOptionCloseOnExec,
@@ -1251,7 +1256,7 @@ Status Platform::PutFile(const FileSpec &source, const FileSpec &destination,
   uint64_t offset = 0;
   for (;;) {
     size_t bytes_read = buffer_sp->GetByteSize();
-    error = source_file.Read(buffer_sp->GetBytes(), bytes_read);
+    error = source_file.get()->Read(buffer_sp->GetBytes(), bytes_read);
     if (error.Fail() || bytes_read == 0)
       break;
 
@@ -1264,7 +1269,7 @@ Status Platform::PutFile(const FileSpec &source, const FileSpec &destination,
     if (bytes_written != bytes_read) {
       // We didn't write the correct number of bytes, so adjust the file
       // position in the source file we are reading from...
-      source_file.SeekFromStart(offset);
+      source_file.get()->SeekFromStart(offset);
     }
   }
   CloseFile(dest_file, error);
@@ -1314,7 +1319,23 @@ MmapArgList Platform::GetMmapArgumentList(const ArchSpec &arch, addr_t addr,
 }
 
 lldb_private::Status Platform::RunShellCommand(
-    const char *command, // Shouldn't be nullptr
+    llvm::StringRef command,
+    const FileSpec &
+        working_dir, // Pass empty FileSpec to use the current working directory
+    int *status_ptr, // Pass nullptr if you don't want the process exit status
+    int *signo_ptr, // Pass nullptr if you don't want the signal that caused the
+                    // process to exit
+    std::string
+        *command_output, // Pass nullptr if you don't want the command output
+    const Timeout<std::micro> &timeout) {
+  return RunShellCommand(llvm::StringRef(), command, working_dir, status_ptr,
+                         signo_ptr, command_output, timeout);
+}
+
+lldb_private::Status Platform::RunShellCommand(
+    llvm::StringRef shell,   // Pass empty if you want to use the default
+                             // shell interpreter
+    llvm::StringRef command, // Shouldn't be empty
     const FileSpec &
         working_dir, // Pass empty FileSpec to use the current working directory
     int *status_ptr, // Pass nullptr if you don't want the process exit status
@@ -1324,8 +1345,8 @@ lldb_private::Status Platform::RunShellCommand(
         *command_output, // Pass nullptr if you don't want the command output
     const Timeout<std::micro> &timeout) {
   if (IsHost())
-    return Host::RunShellCommand(command, working_dir, status_ptr, signo_ptr,
-                                 command_output, timeout);
+    return Host::RunShellCommand(shell, command, working_dir, status_ptr,
+                                 signo_ptr, command_output, timeout);
   else
     return Status("unimplemented");
 }
@@ -1402,11 +1423,11 @@ OptionGroupPlatformRSync::SetOptionValue(uint32_t option_idx,
     break;
 
   case 'R':
-    m_rsync_opts.assign(option_arg);
+    m_rsync_opts.assign(std::string(option_arg));
     break;
 
   case 'P':
-    m_rsync_prefix.assign(option_arg);
+    m_rsync_prefix.assign(std::string(option_arg));
     break;
 
   case 'i':
@@ -1448,7 +1469,7 @@ OptionGroupPlatformSSH::SetOptionValue(uint32_t option_idx,
     break;
 
   case 'S':
-    m_ssh_opts.assign(option_arg);
+    m_ssh_opts.assign(std::string(option_arg));
     break;
 
   default:
@@ -1475,7 +1496,7 @@ lldb_private::Status OptionGroupPlatformCaching::SetOptionValue(
   char short_option = (char)GetDefinitions()[option_idx].short_option;
   switch (short_option) {
   case 'c':
-    m_cache_dir.assign(option_arg);
+    m_cache_dir.assign(std::string(option_arg));
     break;
 
   default:
@@ -1559,19 +1580,27 @@ Status Platform::GetRemoteSharedModule(const ModuleSpec &module_spec,
       if (error.Success() && module_sp)
         break;
     }
-    if (module_sp)
+    if (module_sp) {
+      resolved_module_spec = arch_module_spec;
       got_module_spec = true;
+    }
   }
 
   if (!got_module_spec) {
     // Get module information from a target.
-    if (!GetModuleSpec(module_spec.GetFileSpec(), module_spec.GetArchitecture(),
-                       resolved_module_spec)) {
+    if (GetModuleSpec(module_spec.GetFileSpec(), module_spec.GetArchitecture(),
+                      resolved_module_spec)) {
       if (!module_spec.GetUUID().IsValid() ||
           module_spec.GetUUID() == resolved_module_spec.GetUUID()) {
-        return module_resolver(module_spec);
+        got_module_spec = true;
       }
     }
+  }
+
+  if (!got_module_spec) {
+    // Fall back to the given module resolver, which may have its own
+    // search logic.
+    return module_resolver(module_spec);
   }
 
   // If we are looking for a specific UUID, make sure resolved_module_spec has
@@ -1630,7 +1659,7 @@ Status Platform::DownloadModuleSlice(const FileSpec &src_file_spec,
   Status error;
 
   std::error_code EC;
-  llvm::raw_fd_ostream dst(dst_file_spec.GetPath(), EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream dst(dst_file_spec.GetPath(), EC, llvm::sys::fs::OF_None);
   if (EC) {
     error.SetErrorStringWithFormat("unable to open destination file: %s",
                                    dst_file_spec.GetPath().c_str());
@@ -1766,9 +1795,23 @@ Status Platform::UnloadImage(lldb_private::Process *process,
 
 lldb::ProcessSP Platform::ConnectProcess(llvm::StringRef connect_url,
                                          llvm::StringRef plugin_name,
-                                         lldb_private::Debugger &debugger,
-                                         lldb_private::Target *target,
-                                         lldb_private::Status &error) {
+                                         Debugger &debugger, Target *target,
+                                         Status &error) {
+  return DoConnectProcess(connect_url, plugin_name, debugger, nullptr, target,
+                          error);
+}
+
+lldb::ProcessSP Platform::ConnectProcessSynchronous(
+    llvm::StringRef connect_url, llvm::StringRef plugin_name,
+    Debugger &debugger, Stream &stream, Target *target, Status &error) {
+  return DoConnectProcess(connect_url, plugin_name, debugger, &stream, target,
+                          error);
+}
+
+lldb::ProcessSP Platform::DoConnectProcess(llvm::StringRef connect_url,
+                                           llvm::StringRef plugin_name,
+                                           Debugger &debugger, Stream *stream,
+                                           Target *target, Status &error) {
   error.Clear();
 
   if (!target) {
@@ -1795,13 +1838,34 @@ lldb::ProcessSP Platform::ConnectProcess(llvm::StringRef connect_url,
 
   lldb::ProcessSP process_sp =
       target->CreateProcess(debugger.GetListener(), plugin_name, nullptr);
+
   if (!process_sp)
     return nullptr;
 
-  error =
-      process_sp->ConnectRemote(debugger.GetOutputFile().get(), connect_url);
-  if (error.Fail())
+  // If this private method is called with a stream we are synchronous.
+  const bool synchronous = stream != nullptr;
+
+  ListenerSP listener_sp(
+      Listener::MakeListener("lldb.Process.ConnectProcess.hijack"));
+  if (synchronous)
+    process_sp->HijackProcessEvents(listener_sp);
+
+  error = process_sp->ConnectRemote(connect_url);
+  if (error.Fail()) {
+    if (synchronous)
+      process_sp->RestoreProcessEvents();
     return nullptr;
+  }
+
+  if (synchronous) {
+    EventSP event_sp;
+    process_sp->WaitForProcessToStop(llvm::None, &event_sp, true, listener_sp,
+                                     nullptr);
+    process_sp->RestoreProcessEvents();
+    bool pop_process_io_handler = false;
+    Process::HandleProcessStateChangedEvent(event_sp, stream,
+                                            pop_process_io_handler);
+  }
 
   return process_sp;
 }
@@ -1815,14 +1879,22 @@ size_t Platform::ConnectToWaitingProcesses(lldb_private::Debugger &debugger,
 size_t Platform::GetSoftwareBreakpointTrapOpcode(Target &target,
                                                  BreakpointSite *bp_site) {
   ArchSpec arch = target.GetArchitecture();
+  assert(arch.IsValid());
   const uint8_t *trap_opcode = nullptr;
   size_t trap_opcode_size = 0;
 
   switch (arch.GetMachine()) {
+  case llvm::Triple::aarch64_32:
   case llvm::Triple::aarch64: {
     static const uint8_t g_aarch64_opcode[] = {0x00, 0x00, 0x20, 0xd4};
     trap_opcode = g_aarch64_opcode;
     trap_opcode_size = sizeof(g_aarch64_opcode);
+  } break;
+
+  case llvm::Triple::arc: {
+    static const uint8_t g_hex_opcode[] = { 0xff, 0x7f };
+    trap_opcode = g_hex_opcode;
+    trap_opcode_size = sizeof(g_hex_opcode);
   } break;
 
   // TODO: support big-endian arm and thumb trap codes.
@@ -1849,6 +1921,12 @@ size_t Platform::GetSoftwareBreakpointTrapOpcode(Target &target,
       trap_opcode = g_arm_breakpoint_opcode;
       trap_opcode_size = sizeof(g_arm_breakpoint_opcode);
     }
+  } break;
+
+  case llvm::Triple::avr: {
+    static const uint8_t g_hex_opcode[] = {0x98, 0x95};
+    trap_opcode = g_hex_opcode;
+    trap_opcode_size = sizeof(g_hex_opcode);
   } break;
 
   case llvm::Triple::mips:
@@ -1898,8 +1976,7 @@ size_t Platform::GetSoftwareBreakpointTrapOpcode(Target &target,
   } break;
 
   default:
-    llvm_unreachable(
-        "Unhandled architecture in Platform::GetSoftwareBreakpointTrapOpcode");
+    return 0;
   }
 
   assert(bp_site);

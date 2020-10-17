@@ -10,6 +10,11 @@
 // RUN: %clang -target x86_64-unknown-linux-gnu -gsplit-dwarf=split -c -### %s 2> %t
 // RUN: FileCheck -check-prefix=CHECK-ACTIONS < %t %s
 
+// RUN: %clang -target wasm32-unknown-unknown -gsplit-dwarf -c -### %s 2> %t
+// RUN: FileCheck -check-prefix=CHECK-ACTIONS < %t %s
+// RUN: %clang -target wasm32-unknown-unknown -gsplit-dwarf=split -c -### %s 2> %t
+// RUN: FileCheck -check-prefix=CHECK-ACTIONS < %t %s
+
 // RUN: %clang -target x86_64-unknown-linux-gnu -gsplit-dwarf=single -c -### %s 2> %t
 // RUN: FileCheck -check-prefix=CHECK-ACTIONS-SINGLE-SPLIT < %t %s
 //
@@ -61,6 +66,9 @@
 // CHECK-GMLT-WITH-SPLIT: "-split-dwarf-file"
 // CHECK-GMLT-WITH-SPLIT: "-split-dwarf-output"
 
+// RUN: %clang -target x86_64-unknown-linux-gnu -g -S -### %s 2> %t
+// RUN: FileCheck -check-prefix=CHECK-NOINLINE-WITHOUT-SPLIT < %t %s
+//
 // RUN: %clang -target x86_64-unknown-linux-gnu -g -fno-split-dwarf-inlining -S -### %s 2> %t
 // RUN: FileCheck -check-prefix=CHECK-NOINLINE-WITHOUT-SPLIT < %t %s
 //
@@ -79,7 +87,7 @@
 // CHECK-SPLIT-WITH-NOINL: "-debug-info-kind=limited"
 // CHECK-SPLIT-WITH-NOINL: "-split-dwarf-output"
 
-// RUN: %clang -target x86_64-unknown-linux-gnu -gsplit-dwarf -gmlt -S -### %s 2> %t
+// RUN: %clang -target x86_64-unknown-linux-gnu -gsplit-dwarf -gmlt -fsplit-dwarf-inlining -S -### %s 2> %t
 // RUN: FileCheck -check-prefix=CHECK-GMLT-OVER-SPLIT < %t %s
 //
 // CHECK-GMLT-OVER-SPLIT: "-debug-info-kind=line-tables-only"

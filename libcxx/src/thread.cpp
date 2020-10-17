@@ -14,18 +14,22 @@
 #include "vector"
 #include "future"
 #include "limits"
-#include <sys/types.h>
 
-#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#if __has_include(<sys/types.h>)
+# include <sys/types.h>
+#endif
+
+#if __has_include(<sys/param.h>)
 # include <sys/param.h>
-# if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__APPLE__)
-#   include <sys/sysctl.h>
-# endif
-#endif // defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#endif
 
-#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__CloudABI__) || defined(__Fuchsia__) || defined(__wasi__)
+#if __has_include(<sys/sysctl.h>)
+# include <sys/sysctl.h>
+#endif
+
+#if __has_include(<unistd.h>)
 # include <unistd.h>
-#endif // defined(__unix__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__CloudABI__) || defined(__Fuchsia__) || defined(__wasi__)
+#endif
 
 #if defined(__NetBSD__)
 #pragma weak pthread_create // Do not create libpthread dependency
@@ -35,7 +39,7 @@
 #include <windows.h>
 #endif
 
-#if defined(__unix__) && !defined(__ANDROID__) && defined(__ELF__) && defined(_LIBCPP_HAS_COMMENT_LIB_PRAGMA)
+#if defined(__ELF__) && defined(_LIBCPP_LINK_PTHREAD_LIB)
 #pragma comment(lib, "pthread")
 #endif
 
@@ -139,7 +143,7 @@ class _LIBCPP_HIDDEN __hidden_allocator
 {
 public:
     typedef T  value_type;
-    
+
     T* allocate(size_t __n)
         {return static_cast<T*>(::operator new(__n * sizeof(T)));}
     void deallocate(T* __p, size_t) {::operator delete(static_cast<void*>(__p));}

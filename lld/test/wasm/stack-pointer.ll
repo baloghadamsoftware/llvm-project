@@ -18,8 +18,9 @@ entry:
 ; CHECK-NEXT:   - Type:            TYPE
 ; CHECK-NEXT:     Signatures:
 ; CHECK-NEXT:       - Index:           0
-; CHECK-NEXT:         ReturnType:      I32
 ; CHECK-NEXT:         ParamTypes:
+; CHECK-NEXT:         ReturnTypes:
+; CHECK-NEXT:           - I32
 ; CHECK-NEXT:   - Type:            IMPORT
 ; CHECK-NEXT:     Imports:
 ; CHECK-NEXT:       - Module:          env
@@ -31,7 +32,8 @@ entry:
 ; CHECK-NEXT:     FunctionTypes:   [ 0 ]
 ; CHECK-NEXT:   - Type:            TABLE
 ; CHECK-NEXT:     Tables:
-; CHECK-NEXT:       - ElemType:        FUNCREF
+; CHECK-NEXT:       - Index:           0
+; CHECK-NEXT:         ElemType:        FUNCREF
 ; CHECK-NEXT:         Limits:
 ; CHECK-NEXT:           Flags:           [ HAS_MAX ]
 ; CHECK-NEXT:           Initial:         0x00000001

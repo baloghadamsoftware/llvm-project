@@ -1,5 +1,5 @@
 ====================================================
-Extra Clang Tools 10.0.0 (In-Progress) Release Notes
+Extra Clang Tools 12.0.0 (In-Progress) Release Notes
 ====================================================
 
 .. contents::
@@ -10,7 +10,7 @@ Written by the `LLVM Team <https://llvm.org/>`_
 
 .. warning::
 
-   These are in-progress notes for the upcoming Extra Clang Tools 10 release.
+   These are in-progress notes for the upcoming Extra Clang Tools 12 release.
    Release notes for previous releases can be found on
    `the Download Page <https://releases.llvm.org/download.html>`_.
 
@@ -18,7 +18,7 @@ Introduction
 ============
 
 This document contains the release notes for the Extra Clang Tools, part of the
-Clang release 10.0.0. Here we describe the status of the Extra Clang Tools in
+Clang release 12.0.0. Here we describe the status of the Extra Clang Tools in
 some detail, including major improvements from the previous release and new
 feature work. All LLVM releases may be downloaded from the `LLVM releases web
 site <https://llvm.org/releases/>`_.
@@ -27,12 +27,12 @@ For more information about Clang or LLVM, including information about
 the latest release, please see the `Clang Web Site <https://clang.llvm.org>`_ or
 the `LLVM Web Site <https://llvm.org>`_.
 
-Note that if you are reading this file from a Subversion checkout or the
+Note that if you are reading this file from a Git checkout or the
 main Clang web page, this document applies to the *next* release, not
 the current one. To see the release notes for a specific release, please
 see the `releases page <https://llvm.org/releases/>`_.
 
-What's New in Extra Clang Tools 10.0.0?
+What's New in Extra Clang Tools 12.0.0?
 =======================================
 
 Some of the major new features and improvements to Extra Clang Tools are listed
@@ -67,19 +67,66 @@ The improvements are...
 Improvements to clang-tidy
 --------------------------
 
-- New :doc:`linuxkernel-must-use-errs
-  <clang-tidy/checks/linuxkernel-must-use-errs>` check.
+- Checks that allow configuring names of headers to include now support wrapping
+  the include in angle brackets to create a system include. For example,
+  :doc:`cppcoreguidelines-init-variables
+  <clang-tidy/checks/cppcoreguidelines-init-variables>` and
+  :doc:`modernize-make-unique <clang-tidy/checks/modernize-make-unique>`.
 
-  Checks Linux kernel code to see if it uses the results from the functions in
-  ``linux/err.h``. Also checks to see if code uses the results from functions that
-  directly return a value from one of these error functions.
+New modules
+^^^^^^^^^^^
 
-  This is important in the Linux kernel because ``ERR_PTR``, ``PTR_ERR``,
-  ``IS_ERR``, ``IS_ERR_OR_NULL``, ``ERR_CAST``, and ``PTR_ERR_OR_ZERO`` return
-  values must be checked, since positive pointers and negative error codes are
-  being used in the same context. These functions are marked with
-  ``__attribute__((warn_unused_result))``, but some kernel versions do not have
-  this warning enabled for clang.
+- New ``altera`` module.
+
+  Includes checks related to OpenCL for FPGA coding guidelines, based on the
+  `Altera SDK for OpenCL: Best Practices Guide
+  <https://www.altera.com/en_US/pdfs/literature/hb/opencl-sdk/aocl_optimization_guide.pdf>`_.
+
+New checks
+^^^^^^^^^^
+
+- New :doc:`altera-struct-pack-align
+  <clang-tidy/checks/altera-struct-pack-align>` check.
+
+  Finds structs that are inefficiently packed or aligned, and recommends
+  packing and/or aligning of said structs as needed.
+
+- New :doc:`cppcoreguidelines-prefer-member-initializer
+  <clang-tidy/checks/cppcoreguidelines-prefer-member-initializer>` check.
+
+  Finds member initializations in the constructor body which can be placed into
+  the initialization list instead.
+
+- New :doc:`bugprone-misplaced-pointer-arithmetic-in-alloc
+  <clang-tidy/checks/bugprone-misplaced-pointer-arithmetic-in-alloc>` check.
+
+- New :doc:`bugprone-redundant-branch-condition
+  <clang-tidy/checks/bugprone-redundant-branch-condition>` check.
+
+  Finds condition variables in nested ``if`` statements that were also checked
+  in the outer ``if`` statement and were not changed.
+
+- New :doc:`readability-function-cognitive-complexity
+  <clang-tidy/checks/readability-function-cognitive-complexity>` check.
+
+  Flags functions with Cognitive Complexity metric exceeding the configured limit.
+
+Changes in existing checks
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Improved :doc:`modernize-loop-convert
+  <clang-tidy/checks/modernize-loop-convert>` check.
+
+  Now able to transform iterator loops using ``rbegin`` and ``rend`` methods.
+
+- Improved :doc:`readability-identifier-naming
+  <clang-tidy/checks/readability-identifier-naming>` check.
+
+  Added an option `GetConfigPerFile` to support including files which use
+  different naming styles.
+
+- Removed `google-runtime-references` check because the rule it checks does
+  not exist in the Google Style Guide anymore.
 
 Improvements to include-fixer
 -----------------------------
@@ -100,3 +147,6 @@ Improvements to pp-trace
 ------------------------
 
 The improvements are...
+
+Clang-tidy visual studio plugin
+-------------------------------

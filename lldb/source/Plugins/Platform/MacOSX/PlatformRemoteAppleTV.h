@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_PlatformRemoteAppleTV_h_
-#define liblldb_PlatformRemoteAppleTV_h_
+#ifndef LLDB_SOURCE_PLUGINS_PLATFORM_MACOSX_PLATFORMREMOTEAPPLETV_H
+#define LLDB_SOURCE_PLUGINS_PLATFORM_MACOSX_PLATFORMREMOTEAPPLETV_H
 
 #include <string>
 
@@ -20,8 +20,6 @@
 class PlatformRemoteAppleTV : public PlatformRemoteDarwinDevice {
 public:
   PlatformRemoteAppleTV();
-
-  ~PlatformRemoteAppleTV() override = default;
 
   // Class Functions
   static lldb::PlatformSP CreateInstance(bool force,
@@ -56,9 +54,6 @@ protected:
   void GetDeviceSupportDirectoryNames (std::vector<std::string> &dirnames) override;
 
   std::string GetPlatformName () override;
-
-private:
-  DISALLOW_COPY_AND_ASSIGN(PlatformRemoteAppleTV);
 };
 
-#endif // liblldb_PlatformRemoteAppleTV_h_
+#endif // LLDB_SOURCE_PLUGINS_PLATFORM_MACOSX_PLATFORMREMOTEAPPLETV_H

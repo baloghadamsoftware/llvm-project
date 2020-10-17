@@ -8,13 +8,16 @@ add_clang_subdirectory(clang-format-vs)
 add_clang_subdirectory(clang-fuzzer)
 add_clang_subdirectory(clang-import-test)
 add_clang_subdirectory(clang-offload-bundler)
+add_clang_subdirectory(clang-offload-wrapper)
 add_clang_subdirectory(clang-scan-deps)
 
 add_clang_subdirectory(c-index-test)
 
 add_clang_subdirectory(clang-rename)
 add_clang_subdirectory(clang-refactor)
-if(UNIX)
+# For MinGW we only enable shared library if LLVM_LINK_LLVM_DYLIB=ON.
+# Without that option resulting library is too close to 2^16 DLL exports limit.
+if(UNIX OR (MINGW AND LLVM_LINK_LLVM_DYLIB))
   add_clang_subdirectory(clang-shlib)
 endif()
 

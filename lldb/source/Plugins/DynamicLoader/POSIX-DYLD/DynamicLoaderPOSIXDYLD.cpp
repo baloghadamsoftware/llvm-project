@@ -1,4 +1,4 @@
-//===-- DynamicLoaderPOSIXDYLD.cpp ------------------------------*- C++ -*-===//
+//===-- DynamicLoaderPOSIXDYLD.cpp ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -28,6 +28,8 @@
 
 using namespace lldb;
 using namespace lldb_private;
+
+LLDB_PLUGIN_DEFINE_ADV(DynamicLoaderPOSIXDYLD, DynamicLoaderPosixDYLD)
 
 void DynamicLoaderPOSIXDYLD::Initialize() {
   PluginManager::RegisterPlugin(GetPluginNameStatic(),
@@ -87,7 +89,7 @@ void DynamicLoaderPOSIXDYLD::DidAttach() {
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_DYNAMIC_LOADER));
   LLDB_LOGF(log, "DynamicLoaderPOSIXDYLD::%s() pid %" PRIu64, __FUNCTION__,
             m_process ? m_process->GetID() : LLDB_INVALID_PROCESS_ID);
-  m_auxv = llvm::make_unique<AuxVector>(m_process->GetAuxvData());
+  m_auxv = std::make_unique<AuxVector>(m_process->GetAuxvData());
 
   LLDB_LOGF(
       log, "DynamicLoaderPOSIXDYLD::%s pid %" PRIu64 " reloaded auxv data",
@@ -179,7 +181,7 @@ void DynamicLoaderPOSIXDYLD::DidLaunch() {
   ModuleSP executable;
   addr_t load_offset;
 
-  m_auxv = llvm::make_unique<AuxVector>(m_process->GetAuxvData());
+  m_auxv = std::make_unique<AuxVector>(m_process->GetAuxvData());
 
   executable = GetTargetExecutable();
   load_offset = ComputeLoadOffset();

@@ -2,7 +2,9 @@ set(files
   adxintrin.h
   altivec.h
   ammintrin.h
+  amxintrin.h
   arm_acle.h
+  arm_cmse.h
   armintr.h
   arm64intr.h
   avx2intrin.h
@@ -36,6 +38,7 @@ set(files
   bmi2intrin.h
   bmiintrin.h
   __clang_cuda_builtin_vars.h
+  __clang_cuda_math.h
   __clang_cuda_cmath.h
   __clang_cuda_complex_builtins.h
   __clang_cuda_device_functions.h
@@ -43,7 +46,12 @@ set(files
   __clang_cuda_libdevice_declares.h
   __clang_cuda_math_forward_declares.h
   __clang_cuda_runtime_wrapper.h
+  __clang_hip_libdevice_declares.h
+  __clang_hip_cmath.h
+  __clang_hip_math.h
+  __clang_hip_runtime_wrapper.h
   cetintrin.h
+  cet.h
   cldemoteintrin.h
   clzerointrin.h
   cpuid.h
@@ -57,6 +65,7 @@ set(files
   fmaintrin.h
   fxsrintrin.h
   gfniintrin.h
+  hresetintrin.h
   htmintrin.h
   htmxlintrin.h
   ia32intrin.h
@@ -65,6 +74,7 @@ set(files
   inttypes.h
   invpcidintrin.h
   iso646.h
+  keylockerintrin.h
   limits.h
   lwpintrin.h
   lzcntintrin.h
@@ -86,6 +96,7 @@ set(files
   ptwriteintrin.h
   rdseedintrin.h
   rtmintrin.h
+  serializeintrin.h
   sgxintrin.h
   s390intrin.h
   shaintrin.h
@@ -101,6 +112,7 @@ set(files
   tbmintrin.h
   tgmath.h
   tmmintrin.h
+  tsxldtrkintrin.h
   unwind.h
   vadefs.h
   vaesintrin.h
@@ -108,10 +120,12 @@ set(files
   vecintrin.h
   vpclmulqdqintrin.h
   waitpkgintrin.h
+  wasm_simd128.h
   wbnoinvdintrin.h
   wmmintrin.h
   __wmmintrin_aes.h
   __wmmintrin_pclmul.h
+  x86gprintrin.h
   x86intrin.h
   xmmintrin.h
   xopintrin.h
@@ -133,13 +147,19 @@ set(ppc_wrapper_files
   ppc_wrappers/xmmintrin.h
   ppc_wrappers/mm_malloc.h
   ppc_wrappers/emmintrin.h
+  ppc_wrappers/pmmintrin.h
+  ppc_wrappers/tmmintrin.h
+  ppc_wrappers/smmintrin.h
 )
 
 set(openmp_wrapper_files
   openmp_wrappers/math.h
   openmp_wrappers/cmath
-  openmp_wrappers/__clang_openmp_math.h
-  openmp_wrappers/__clang_openmp_math_declares.h
+  openmp_wrappers/complex.h
+  openmp_wrappers/complex
+  openmp_wrappers/__clang_openmp_device_functions.h
+  openmp_wrappers/complex_cmath.h
+  openmp_wrappers/new
 )
 
 set(output_dir ${LLVM_LIBRARY_OUTPUT_INTDIR}/clang/${CLANG_VERSION}/include)
@@ -179,6 +199,14 @@ endforeach( f )
 clang_generate_header(-gen-arm-neon arm_neon.td arm_neon.h)
 # Generate arm_fp16.h
 clang_generate_header(-gen-arm-fp16 arm_fp16.td arm_fp16.h)
+# Generate arm_sve.h
+clang_generate_header(-gen-arm-sve-header arm_sve.td arm_sve.h)
+# Generate arm_bf16.h
+clang_generate_header(-gen-arm-bf16 arm_bf16.td arm_bf16.h)
+# Generate arm_mve.h
+clang_generate_header(-gen-arm-mve-header arm_mve.td arm_mve.h)
+# Generate arm_cde.h
+clang_generate_header(-gen-arm-cde-header arm_cde.td arm_cde.h)
 
 add_custom_target(clang-resource-headers ALL DEPENDS ${out_files})
 set_target_properties(clang-resource-headers PROPERTIES

@@ -64,6 +64,10 @@ public:
 
   uint32_t NumSupportedHardwareWatchpoints() override;
 
+  llvm::Optional<SyscallData> GetSyscallData() override;
+
+  llvm::Optional<MmapData> GetMmapData() override;
+
 protected:
   void *GetGPRBuffer() override { return &m_gpr_x86_64; }
 
@@ -74,6 +78,8 @@ protected:
   Status ReadFPR() override;
 
   Status WriteFPR() override;
+
+  uint32_t GetPtraceOffset(uint32_t reg_index) override;
 
 private:
   // Private member types.

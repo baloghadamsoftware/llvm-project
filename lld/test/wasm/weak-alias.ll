@@ -23,16 +23,18 @@ entry:
 ; CHECK-NEXT:   - Type:            TYPE
 ; CHECK-NEXT:     Signatures:
 ; CHECK-NEXT:       - Index:           0
-; CHECK-NEXT:         ReturnType:      NORESULT
 ; CHECK-NEXT:         ParamTypes:
+; CHECK-NEXT:         ReturnTypes:     []
 ; CHECK-NEXT:       - Index:           1
-; CHECK-NEXT:         ReturnType:      I32
-; CHECK-NEXT:         ParamTypes:
+; CHECK-NEXT:         ParamTypes:      []
+; CHECK-NEXT:         ReturnTypes:
+; CHECK-NEXT:           - I32
 ; CHECK-NEXT:   - Type:            FUNCTION
 ; CHECK-NEXT:     FunctionTypes:   [ 0, 1, 1, 1, 1, 1 ]
 ; CHECK-NEXT:   - Type:            TABLE
 ; CHECK-NEXT:     Tables:
-; CHECK-NEXT:       - ElemType:        FUNCREF
+; CHECK-NEXT:       - Index:           0
+; CHECK-NEXT:         ElemType:        FUNCREF
 ; CHECK-NEXT:         Limits:
 ; CHECK-NEXT:           Flags:           [ HAS_MAX ]
 ; CHECK-NEXT:           Initial:         0x00000002
@@ -131,11 +133,12 @@ entry:
 ; RELOC-NEXT:   - Type:            TYPE
 ; RELOC-NEXT:     Signatures:
 ; RELOC-NEXT:       - Index:           0
-; RELOC-NEXT:         ReturnType:      NORESULT
-; RELOC-NEXT:         ParamTypes:
+; RELOC-NEXT:         ParamTypes:      []
+; RELOC-NEXT:         ReturnTypes:     []
 ; RELOC-NEXT:       - Index:           1
-; RELOC-NEXT:         ReturnType:      I32
-; RELOC-NEXT:         ParamTypes:
+; RELOC-NEXT:         ParamTypes:      []
+; RELOC-NEXT:         ReturnTypes:
+; RELOC-NEXT:           - I32
 ; RELOC-NEXT:   - Type:            IMPORT
 ; RELOC-NEXT:     Imports:
 ; RELOC-NEXT:       - Module:          env
@@ -147,7 +150,8 @@ entry:
 ; RELOC-NEXT:     FunctionTypes:   [ 0, 1, 1, 1, 1, 1 ]
 ; RELOC-NEXT:   - Type:            TABLE
 ; RELOC-NEXT:     Tables:
-; RELOC-NEXT:       - ElemType:        FUNCREF
+; RELOC-NEXT:       - Index:           0
+; RELOC-NEXT:         ElemType:        FUNCREF
 ; RELOC-NEXT:         Limits:
 ; RELOC-NEXT:           Flags:           [ HAS_MAX ]
 ; RELOC-NEXT:           Initial:         0x00000002

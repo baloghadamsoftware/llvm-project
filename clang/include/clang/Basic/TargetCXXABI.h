@@ -15,6 +15,7 @@
 #ifndef LLVM_CLANG_BASIC_TARGETCXXABI_H
 #define LLVM_CLANG_BASIC_TARGETCXXABI_H
 
+#include "clang/Basic/LLVM.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace clang {
@@ -103,6 +104,19 @@ public:
     /// of these details is necessarily final yet.
     WebAssembly,
 
+    /// The Fuchsia ABI is a modified version of the Itanium ABI.
+    ///
+    /// The relevant changes from the Itanium ABI are:
+    ///   - constructors and destructors return 'this', as in ARM.
+    Fuchsia,
+
+    /// The XL ABI is the ABI used by IBM xlclang compiler and is a modified
+    /// version of the Itanium ABI.
+    ///
+    /// The relevant changes from the Itanium ABI are:
+    ///   - static initialization is adjusted to use sinit and sterm functions;
+    XL,
+
     /// The Microsoft ABI is the ABI used by Microsoft Visual Studio (and
     /// compatible compilers).
     ///
@@ -133,6 +147,7 @@ public:
   /// Does this ABI generally fall into the Itanium family of ABIs?
   bool isItaniumFamily() const {
     switch (getKind()) {
+    case Fuchsia:
     case GenericAArch64:
     case GenericItanium:
     case GenericARM:
@@ -141,6 +156,7 @@ public:
     case WatchOS:
     case GenericMIPS:
     case WebAssembly:
+    case XL:
       return true;
 
     case Microsoft:
@@ -152,6 +168,7 @@ public:
   /// Is this ABI an MSVC-compatible ABI?
   bool isMicrosoft() const {
     switch (getKind()) {
+    case Fuchsia:
     case GenericAArch64:
     case GenericItanium:
     case GenericARM:
@@ -160,6 +177,7 @@ public:
     case WatchOS:
     case GenericMIPS:
     case WebAssembly:
+    case XL:
       return false;
 
     case Microsoft:
@@ -182,6 +200,7 @@ public:
     case WebAssembly:
       // WebAssembly doesn't require any special alignment for member functions.
       return false;
+    case Fuchsia:
     case GenericARM:
     case GenericAArch64:
     case GenericMIPS:
@@ -193,6 +212,7 @@ public:
     case iOS64:
     case WatchOS:
     case Microsoft:
+    case XL:
       return true;
     }
     llvm_unreachable("bad ABI kind");
@@ -257,6 +277,7 @@ public:
   /// done on a generic Itanium platform.
   bool canKeyFunctionBeInline() const {
     switch (getKind()) {
+    case Fuchsia:
     case GenericARM:
     case iOS64:
     case WebAssembly:
@@ -268,6 +289,7 @@ public:
     case iOS:   // old iOS compilers did not follow this rule
     case Microsoft:
     case GenericMIPS:
+    case XL:
       return true;
     }
     llvm_unreachable("bad ABI kind");
@@ -277,27 +299,18 @@ public:
   /// padding of a base class?
   ///
   /// This decision cannot be changed without breaking platform ABI
-  /// compatibility, and yet it is tied to language guarantees which
-  /// the committee has so far seen fit to strengthen no less than
-  /// three separate times:
-  ///   - originally, there were no restrictions at all;
-  ///   - C++98 declared that objects could not be allocated in the
-  ///     tail padding of a POD type;
-  ///   - C++03 extended the definition of POD to include classes
-  ///     containing member pointers; and
-  ///   - C++11 greatly broadened the definition of POD to include
-  ///     all trivial standard-layout classes.
-  /// Each of these changes technically took several existing
-  /// platforms and made them permanently non-conformant.
+  /// compatibility. In ISO C++98, tail padding reuse was only permitted for
+  /// non-POD base classes, but that restriction was removed retroactively by
+  /// DR 43, and tail padding reuse is always permitted in all de facto C++
+  /// language modes. However, many platforms use a variant of the old C++98
+  /// rule for compatibility.
   enum TailPaddingUseRules {
     /// The tail-padding of a base class is always theoretically
-    /// available, even if it's POD.  This is not strictly conforming
-    /// in any language mode.
+    /// available, even if it's POD.
     AlwaysUseTailPadding,
 
     /// Only allocate objects in the tail padding of a base class if
     /// the base class is not POD according to the rules of C++ TR1.
-    /// This is non-strictly conforming in C++11 mode.
     UseTailPaddingUnlessPOD03,
 
     /// Only allocate objects in the tail padding of a base class if
@@ -314,10 +327,12 @@ public:
     case GenericARM:
     case iOS:
     case GenericMIPS:
+    case XL:
       return UseTailPaddingUnlessPOD03;
 
     // iOS on ARM64 and WebAssembly use the C++11 POD rules.  They do not honor
     // the Itanium exception about classes with over-large bitfields.
+    case Fuchsia:
     case iOS64:
     case WebAssembly:
     case WatchOS:

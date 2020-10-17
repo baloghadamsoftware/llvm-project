@@ -30,7 +30,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include "test_macros.h"
-#include "assert_checkpoint.h"
 #include "test_allocator.h"
 
 #if TEST_STD_VER < 11
@@ -287,6 +286,7 @@ inline bool ExpectDeath(const char* stmt, Func&& func, DebugInfoMatcher Matcher)
   case DeathTest::RK_MatchFailure:
       return OnFailure("matcher failed");
   }
+  assert(false && "unreachable");
 }
 
 template <class Func>

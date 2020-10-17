@@ -26,6 +26,7 @@ executable("clangd") {
 
   include_dirs = [ ".." ]
   sources = [
+    "Check.cpp",
     "ClangdMain.cpp",
   ]
 }

@@ -17,7 +17,6 @@
 #define LLVM_OBJECT_WASM_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/Wasm.h"
 #include "llvm/Config/llvm-config.h"
@@ -36,14 +35,15 @@ namespace object {
 class WasmSymbol {
 public:
   WasmSymbol(const wasm::WasmSymbolInfo &Info,
-             const wasm::WasmGlobalType *GlobalType,
+             const wasm::WasmGlobalType *GlobalType, const uint8_t TableType,
              const wasm::WasmEventType *EventType,
              const wasm::WasmSignature *Signature)
-      : Info(Info), GlobalType(GlobalType), EventType(EventType),
-        Signature(Signature) {}
+      : Info(Info), GlobalType(GlobalType), TableType(TableType),
+        EventType(EventType), Signature(Signature) {}
 
   const wasm::WasmSymbolInfo &Info;
   const wasm::WasmGlobalType *GlobalType;
+  const uint8_t TableType;
   const wasm::WasmEventType *EventType;
   const wasm::WasmSignature *Signature;
 
@@ -150,11 +150,13 @@ public:
   ArrayRef<wasm::WasmFunctionName> debugNames() const { return DebugNames; }
   uint32_t startFunction() const { return StartFunction; }
   uint32_t getNumImportedGlobals() const { return NumImportedGlobals; }
+  uint32_t getNumImportedTables() const { return NumImportedTables; }
   uint32_t getNumImportedFunctions() const { return NumImportedFunctions; }
   uint32_t getNumImportedEvents() const { return NumImportedEvents; }
+  uint32_t getNumSections() const { return Sections.size(); }
   void moveSymbolNext(DataRefImpl &Symb) const override;
 
-  uint32_t getSymbolFlags(DataRefImpl Symb) const override;
+  Expected<uint32_t> getSymbolFlags(DataRefImpl Symb) const override;
 
   basic_symbol_iterator symbol_begin() const override;
 
@@ -168,6 +170,7 @@ public:
   uint64_t getCommonSymbolSizeImpl(DataRefImpl Symb) const override;
   Expected<SymbolRef::Type> getSymbolType(DataRefImpl Symb) const override;
   Expected<section_iterator> getSymbolSection(DataRefImpl Symb) const override;
+  uint32_t getSymbolSectionId(SymbolRef Sym) const;
 
   // Overrides from SectionRef.
   void moveSectionNext(DataRefImpl &Sec) const override;
@@ -183,7 +186,6 @@ public:
   bool isSectionData(DataRefImpl Sec) const override;
   bool isSectionBSS(DataRefImpl Sec) const override;
   bool isSectionVirtual(DataRefImpl Sec) const override;
-  bool isSectionBitcode(DataRefImpl Sec) const override;
   relocation_iterator section_rel_begin(DataRefImpl Sec) const override;
   relocation_iterator section_rel_end(DataRefImpl Sec) const override;
 
@@ -214,7 +216,9 @@ private:
   bool isValidFunctionIndex(uint32_t Index) const;
   bool isDefinedFunctionIndex(uint32_t Index) const;
   bool isValidGlobalIndex(uint32_t Index) const;
+  bool isValidTableIndex(uint32_t Index) const;
   bool isDefinedGlobalIndex(uint32_t Index) const;
+  bool isDefinedTableIndex(uint32_t Index) const;
   bool isValidEventIndex(uint32_t Index) const;
   bool isDefinedEventIndex(uint32_t Index) const;
   bool isValidFunctionSymbol(uint32_t Index) const;
@@ -229,6 +233,7 @@ private:
 
   const WasmSection &getWasmSection(DataRefImpl Ref) const;
   const wasm::WasmRelocation &getWasmRelocation(DataRefImpl Ref) const;
+  uint32_t getSymbolSectionIdImpl(const WasmSymbol &Symb) const;
 
   Error parseSection(WasmSection &Sec);
   Error parseCustomSection(WasmSection &Sec, ReadContext &Ctx);
@@ -239,8 +244,8 @@ private:
   Error parseFunctionSection(ReadContext &Ctx);
   Error parseTableSection(ReadContext &Ctx);
   Error parseMemorySection(ReadContext &Ctx);
-  Error parseGlobalSection(ReadContext &Ctx);
   Error parseEventSection(ReadContext &Ctx);
+  Error parseGlobalSection(ReadContext &Ctx);
   Error parseExportSection(ReadContext &Ctx);
   Error parseStartSection(ReadContext &Ctx);
   Error parseElemSection(ReadContext &Ctx);
@@ -280,14 +285,17 @@ private:
   uint32_t StartFunction = -1;
   bool HasLinkingSection = false;
   bool HasDylinkSection = false;
+  bool SeenCodeSection = false;
+  bool HasMemory64 = false;
   wasm::WasmLinkingData LinkingData;
   uint32_t NumImportedGlobals = 0;
+  uint32_t NumImportedTables = 0;
   uint32_t NumImportedFunctions = 0;
   uint32_t NumImportedEvents = 0;
   uint32_t CodeSection = 0;
   uint32_t DataSection = 0;
-  uint32_t GlobalSection = 0;
   uint32_t EventSection = 0;
+  uint32_t GlobalSection = 0;
 };
 
 class WasmSectionOrderChecker {
@@ -303,8 +311,8 @@ public:
     WASM_SEC_ORDER_FUNCTION,
     WASM_SEC_ORDER_TABLE,
     WASM_SEC_ORDER_MEMORY,
-    WASM_SEC_ORDER_GLOBAL,
     WASM_SEC_ORDER_EVENT,
+    WASM_SEC_ORDER_GLOBAL,
     WASM_SEC_ORDER_EXPORT,
     WASM_SEC_ORDER_START,
     WASM_SEC_ORDER_ELEM,

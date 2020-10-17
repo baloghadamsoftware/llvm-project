@@ -13,6 +13,7 @@
 #ifndef LLVM_EXECUTIONENGINE_ORC_IRTRANSFORMLAYER_H
 #define LLVM_EXECUTIONENGINE_ORC_IRTRANSFORMLAYER_H
 
+#include "llvm/ADT/FunctionExtras.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/Layer.h"
 #include <memory>
@@ -22,10 +23,13 @@ namespace llvm {
 class Module;
 namespace orc {
 
+/// A layer that applies a transform to emitted modules.
+/// The transform function is responsible for locking the ThreadSafeContext
+/// before operating on the module.
 class IRTransformLayer : public IRLayer {
 public:
-  using TransformFunction = std::function<Expected<ThreadSafeModule>(
-      ThreadSafeModule, const MaterializationResponsibility &R)>;
+  using TransformFunction = unique_function<Expected<ThreadSafeModule>(
+      ThreadSafeModule, MaterializationResponsibility &R)>;
 
   IRTransformLayer(ExecutionSession &ES, IRLayer &BaseLayer,
                    TransformFunction Transform = identityTransform);
@@ -34,11 +38,11 @@ public:
     this->Transform = std::move(Transform);
   }
 
-  void emit(MaterializationResponsibility R, ThreadSafeModule TSM) override;
+  void emit(std::unique_ptr<MaterializationResponsibility> R,
+            ThreadSafeModule TSM) override;
 
-  static ThreadSafeModule
-  identityTransform(ThreadSafeModule TSM,
-                    const MaterializationResponsibility &R) {
+  static ThreadSafeModule identityTransform(ThreadSafeModule TSM,
+                                            MaterializationResponsibility &R) {
     return TSM;
   }
 

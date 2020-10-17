@@ -30,7 +30,6 @@
 
 #include "llvm/CodeGen/RegAllocPBQP.h"
 #include "RegisterCoalescer.h"
-#include "Spiller.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
@@ -58,6 +57,7 @@
 #include "llvm/CodeGen/PBQPRAConstraint.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SlotIndexes.h"
+#include "llvm/CodeGen/Spiller.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/CodeGen/VirtRegMap.h"
@@ -166,7 +166,7 @@ private:
   void initializeGraph(PBQPRAGraph &G, VirtRegMap &VRM, Spiller &VRegSpiller);
 
   /// Spill the given VReg.
-  void spillVReg(unsigned VReg, SmallVectorImpl<unsigned> &NewIntervals,
+  void spillVReg(Register VReg, SmallVectorImpl<Register> &NewIntervals,
                  MachineFunction &MF, LiveIntervals &LIS, VirtRegMap &VRM,
                  Spiller &VRegSpiller);
 
@@ -199,7 +199,7 @@ public:
 
     for (auto NId : G.nodeIds()) {
       PBQP::PBQPNum SpillCost =
-        LIS.getInterval(G.getNodeMetadata(NId).getVReg()).weight;
+          LIS.getInterval(G.getNodeMetadata(NId).getVReg()).weight();
       if (SpillCost == 0.0)
         SpillCost = std::numeric_limits<PBQP::PBQPNum>::min();
       else
@@ -290,7 +290,7 @@ private:
     // If two intervals end at the same point, we need a way to break the tie or
     // the set will assume they're actually equal and refuse to insert a
     // "duplicate". Just compare the vregs - fast and guaranteed unique.
-    return std::get<0>(I1)->reg < std::get<0>(I2)->reg;
+    return std::get<0>(I1)->reg() < std::get<0>(I2)->reg();
   }
 
   static bool isAtLastSegment(const IntervalInfo &I) {
@@ -451,8 +451,7 @@ public:
         unsigned DstReg = CP.getDstReg();
         unsigned SrcReg = CP.getSrcReg();
 
-        const float Scale = 1.0f / MBFI.getEntryFreq();
-        PBQP::PBQPNum CBenefit = MBFI.getBlockFreq(&MBB).getFrequency() * Scale;
+        PBQP::PBQPNum CBenefit = MBFI.getBlockFreqRelativeToEntryBlock(&MBB);
 
         if (CP.isPhys()) {
           if (!MF.getRegInfo().isAllocatable(DstReg))
@@ -519,6 +518,20 @@ private:
   }
 };
 
+/// PBQP-specific implementation of weight normalization.
+class PBQPVirtRegAuxInfo final : public VirtRegAuxInfo {
+  float normalize(float UseDefFreq, unsigned Size, unsigned NumInstr) override {
+    // All intervals have a spill weight that is mostly proportional to the
+    // number of uses, with uses in loops having a bigger weight.
+    return NumInstr * VirtRegAuxInfo::normalize(UseDefFreq, Size, 1);
+  }
+
+public:
+  PBQPVirtRegAuxInfo(MachineFunction &MF, LiveIntervals &LIS, VirtRegMap &VRM,
+                     const MachineLoopInfo &Loops,
+                     const MachineBlockFrequencyInfo &MBFI)
+      : VirtRegAuxInfo(MF, LIS, VRM, Loops, MBFI) {}
+};
 } // end anonymous namespace
 
 // Out-of-line destructor/anchor for PBQPRAConstraint.
@@ -558,7 +571,7 @@ void RegAllocPBQP::findVRegIntervalsToAlloc(const MachineFunction &MF,
 
   // Iterate over all live ranges.
   for (unsigned I = 0, E = MRI.getNumVirtRegs(); I != E; ++I) {
-    unsigned Reg = TargetRegisterInfo::index2VirtReg(I);
+    unsigned Reg = Register::index2VirtReg(I);
     if (MRI.reg_nodbg_empty(Reg))
       continue;
     VRegsToAlloc.insert(Reg);
@@ -596,8 +609,8 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G, VirtRegMap &VRM,
     // If this is an empty interval move it to the EmptyIntervalVRegs set then
     // continue.
     if (VRegLI.empty()) {
-      EmptyIntervalVRegs.insert(VRegLI.reg);
-      VRegsToAlloc.erase(VRegLI.reg);
+      EmptyIntervalVRegs.insert(VRegLI.reg());
+      VRegsToAlloc.erase(VRegLI.reg());
       continue;
     }
 
@@ -637,7 +650,7 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G, VirtRegMap &VRM,
     // Check for vregs that have no allowed registers. These should be
     // pre-spilled and the new vregs added to the worklist.
     if (VRegAllowed.empty()) {
-      SmallVector<unsigned, 8> NewVRegs;
+      SmallVector<Register, 8> NewVRegs;
       spillVReg(VReg, NewVRegs, MF, LIS, VRM, VRegSpiller);
       Worklist.insert(Worklist.end(), NewVRegs.begin(), NewVRegs.end());
       continue;
@@ -673,8 +686,8 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G, VirtRegMap &VRM,
   }
 }
 
-void RegAllocPBQP::spillVReg(unsigned VReg,
-                             SmallVectorImpl<unsigned> &NewIntervals,
+void RegAllocPBQP::spillVReg(Register VReg,
+                             SmallVectorImpl<Register> &NewIntervals,
                              MachineFunction &MF, LiveIntervals &LIS,
                              VirtRegMap &VRM, Spiller &VRegSpiller) {
   VRegsToAlloc.erase(VReg);
@@ -685,7 +698,7 @@ void RegAllocPBQP::spillVReg(unsigned VReg,
   const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
   (void)TRI;
   LLVM_DEBUG(dbgs() << "VREG " << printReg(VReg, &TRI) << " -> SPILLED (Cost: "
-                    << LRE.getParent().weight << ", New vregs: ");
+                    << LRE.getParent().weight() << ", New vregs: ");
 
   // Copy any newly inserted live intervals into the list of regs to
   // allocate.
@@ -693,8 +706,8 @@ void RegAllocPBQP::spillVReg(unsigned VReg,
        I != E; ++I) {
     const LiveInterval &LI = LIS.getInterval(*I);
     assert(!LI.empty() && "Empty spill range.");
-    LLVM_DEBUG(dbgs() << printReg(LI.reg, &TRI) << " ");
-    VRegsToAlloc.insert(LI.reg);
+    LLVM_DEBUG(dbgs() << printReg(LI.reg(), &TRI) << " ");
+    VRegsToAlloc.insert(LI.reg());
   }
 
   LLVM_DEBUG(dbgs() << ")\n");
@@ -730,7 +743,7 @@ bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAGraph &G,
     } else {
       // Spill VReg. If this introduces new intervals we'll need another round
       // of allocation.
-      SmallVector<unsigned, 8> NewVRegs;
+      SmallVector<Register, 8> NewVRegs;
       spillVReg(VReg, NewVRegs, MF, LIS, VRM, VRegSpiller);
       AnotherRoundNeeded |= !NewVRegs.empty();
     }
@@ -750,10 +763,10 @@ void RegAllocPBQP::finalizeAlloc(MachineFunction &MF,
          I != E; ++I) {
     LiveInterval &LI = LIS.getInterval(*I);
 
-    unsigned PReg = MRI.getSimpleHint(LI.reg);
+    unsigned PReg = MRI.getSimpleHint(LI.reg());
 
     if (PReg == 0) {
-      const TargetRegisterClass &RC = *MRI.getRegClass(LI.reg);
+      const TargetRegisterClass &RC = *MRI.getRegClass(LI.reg());
       const ArrayRef<MCPhysReg> RawPRegOrder = RC.getRawAllocationOrder(MF);
       for (unsigned CandidateReg : RawPRegOrder) {
         if (!VRM.getRegInfo().isReserved(CandidateReg)) {
@@ -765,7 +778,7 @@ void RegAllocPBQP::finalizeAlloc(MachineFunction &MF,
              "No un-reserved physical registers in this register class");
     }
 
-    VRM.assignVirt2Phys(LI.reg, PReg);
+    VRM.assignVirt2Phys(LI.reg(), PReg);
   }
 }
 
@@ -779,13 +792,6 @@ void RegAllocPBQP::postOptimization(Spiller &VRegSpiller, LiveIntervals &LIS) {
   DeadRemats.clear();
 }
 
-static inline float normalizePBQPSpillWeight(float UseDefFreq, unsigned Size,
-                                         unsigned NumInstr) {
-  // All intervals have a spill weight that is mostly proportional to the number
-  // of uses, with uses in loops having a bigger weight.
-  return NumInstr * normalizeSpillWeight(UseDefFreq, Size, 1);
-}
-
 bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   LiveIntervals &LIS = getAnalysis<LiveIntervals>();
   MachineBlockFrequencyInfo &MBFI =
@@ -793,8 +799,8 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
 
   VirtRegMap &VRM = getAnalysis<VirtRegMap>();
 
-  calculateSpillWeightsAndHints(LIS, MF, &VRM, getAnalysis<MachineLoopInfo>(),
-                                MBFI, normalizePBQPSpillWeight);
+  PBQPVirtRegAuxInfo VRAI(MF, LIS, VRM, getAnalysis<MachineLoopInfo>(), MBFI);
+  VRAI.calculateSpillWeightsAndHints();
 
   std::unique_ptr<Spiller> VRegSpiller(createInlineSpiller(*this, MF, VRM));
 
@@ -824,11 +830,11 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   if (!VRegsToAlloc.empty()) {
     const TargetSubtargetInfo &Subtarget = MF.getSubtarget();
     std::unique_ptr<PBQPRAConstraintList> ConstraintsRoot =
-      llvm::make_unique<PBQPRAConstraintList>();
-    ConstraintsRoot->addConstraint(llvm::make_unique<SpillCosts>());
-    ConstraintsRoot->addConstraint(llvm::make_unique<Interference>());
+      std::make_unique<PBQPRAConstraintList>();
+    ConstraintsRoot->addConstraint(std::make_unique<SpillCosts>());
+    ConstraintsRoot->addConstraint(std::make_unique<Interference>());
     if (PBQPCoalescing)
-      ConstraintsRoot->addConstraint(llvm::make_unique<Coalescing>());
+      ConstraintsRoot->addConstraint(std::make_unique<Coalescing>());
     ConstraintsRoot->addConstraint(Subtarget.getCustomPBQPConstraints());
 
     bool PBQPAllocComplete = false;
@@ -848,7 +854,7 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
         std::string GraphFileName = FullyQualifiedName + "." + RS.str() +
                                     ".pbqpgraph";
         std::error_code EC;
-        raw_fd_ostream OS(GraphFileName, EC, sys::fs::F_Text);
+        raw_fd_ostream OS(GraphFileName, EC, sys::fs::OF_Text);
         LLVM_DEBUG(dbgs() << "Dumping graph for round " << Round << " to \""
                           << GraphFileName << "\"\n");
         G.dump(OS);

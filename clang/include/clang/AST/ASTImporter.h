@@ -16,6 +16,7 @@
 
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclarationName.h"
+#include "clang/AST/ExprCXX.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
@@ -60,8 +61,12 @@ class TypeSourceInfo;
 
     static char ID;
 
-    ImportError() : Error(Unknown) { }
-    ImportError(const ImportError &Other) : Error(Other.Error) { }
+    ImportError() : Error(Unknown) {}
+    ImportError(const ImportError &Other) : Error(Other.Error) {}
+    ImportError &operator=(const ImportError &Other) {
+      Error = Other.Error;
+      return *this;
+    }
     ImportError(ErrorKind Error) : Error(Error) { }
 
     std::string toString() const;
@@ -89,6 +94,8 @@ class TypeSourceInfo;
         llvm::DenseMap<const CXXBaseSpecifier *, CXXBaseSpecifier *>;
     using FileIDImportHandlerType =
         std::function<void(FileID /*ToID*/, FileID /*FromID*/)>;
+
+    enum class ODRHandlingType { Conservative, Liberal };
 
     // An ImportPath is the list of the AST nodes which we visit during an
     // Import call.
@@ -236,6 +243,8 @@ class TypeSourceInfo;
     /// Whether to perform a minimal import.
     bool Minimal;
 
+    ODRHandlingType ODRHandling;
+
     /// Whether the last diagnostic came from the "from" context.
     bool LastDiagFromFrom = false;
 
@@ -326,6 +335,8 @@ class TypeSourceInfo;
     /// to-be-completed forward declarations when possible.
     bool isMinimalImport() const { return Minimal; }
 
+    void setODRHandling(ODRHandlingType T) { ODRHandling = T; }
+
     /// \brief Import the given object, returns the result.
     ///
     /// \param To Import the object into this variable.
@@ -338,6 +349,10 @@ class TypeSourceInfo;
         To = *ToOrErr;
       return ToOrErr.takeError();
     }
+
+    /// Import cleanup objects owned by ExprWithCleanup.
+    llvm::Expected<ExprWithCleanups::CleanupObject>
+    Import(ExprWithCleanups::CleanupObject From);
 
     /// Import the given type from the "from" context into the "to"
     /// context. A null type is imported as a null type (no error).
@@ -377,6 +392,20 @@ class TypeSourceInfo;
     /// Return the translation unit from where the declaration was
     /// imported. If it does not exist nullptr is returned.
     TranslationUnitDecl *GetFromTU(Decl *ToD);
+
+    /// Return the declaration in the "from" context from which the declaration
+    /// in the "to" context was imported. If it was not imported or of the wrong
+    /// type a null value is returned.
+    template <typename DeclT>
+    llvm::Optional<DeclT *> getImportedFromDecl(const DeclT *ToD) const {
+      auto FromI = ImportedFromDecls.find(ToD);
+      if (FromI == ImportedFromDecls.end())
+        return {};
+      auto *FromD = dyn_cast<DeclT>(FromI->second);
+      if (!FromD)
+        return {};
+      return FromD;
+    }
 
     /// Import the given declaration context from the "from"
     /// AST context into the "to" AST context.
@@ -503,12 +532,11 @@ class TypeSourceInfo;
     ///
     /// \param NumDecls the number of conflicting declarations in \p Decls.
     ///
-    /// \returns the name that the newly-imported declaration should have.
-    virtual DeclarationName HandleNameConflict(DeclarationName Name,
-                                               DeclContext *DC,
-                                               unsigned IDNS,
-                                               NamedDecl **Decls,
-                                               unsigned NumDecls);
+    /// \returns the name that the newly-imported declaration should have. Or
+    /// an error if we can't handle the name conflict.
+    virtual Expected<DeclarationName>
+    HandleNameConflict(DeclarationName Name, DeclContext *DC, unsigned IDNS,
+                       NamedDecl **Decls, unsigned NumDecls);
 
     /// Retrieve the context that AST nodes are being imported into.
     ASTContext &getToContext() const { return ToContext; }

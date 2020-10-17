@@ -2,7 +2,7 @@
 ; RUN: llc -function-sections -mtriple=x86_64-windows-msvc < %s | FileCheck %s
 ; RUN: llc -function-sections -mtriple=x86_64-w64-windows-gnu < %s | FileCheck %s --check-prefix=GNU
 ; RUN: llc -function-sections -mtriple=i686-w64-windows-gnu < %s | FileCheck %s --check-prefix=GNU32
-; RUN: llc -function-sections -mtriple=x86_64-w64-windows-gnu < %s -filetype=obj | llvm-objdump - -headers | FileCheck %s --check-prefix=GNUOBJ
+; RUN: llc -function-sections -mtriple=x86_64-w64-windows-gnu < %s -filetype=obj | llvm-objdump - --headers | FileCheck %s --check-prefix=GNUOBJ
 
 ; GCC and MSVC handle comdats completely differently. Make sure we do the right
 ; thing for each.
@@ -77,8 +77,8 @@ entry:
 ; Make sure the assembler puts the .xdata and .pdata in sections with the right
 ; names.
 ; GNUOBJ: .text$_Z3fooi
-; GNUOBJ: .xdata$_Z3fooi
 ; GNUOBJ: .data$gv
+; GNUOBJ: .xdata$_Z3fooi
 ; GNUOBJ: .pdata$_Z3fooi
 
 declare dso_local i32 @_Z3bari(i32)

@@ -8,14 +8,15 @@
 //
 // This file is a part of AddressSanitizer, an address sanity checker.
 //
-// ASan-private header for asan_interceptors.cc
+// ASan-private header for asan_interceptors.cpp
 //===----------------------------------------------------------------------===//
 #ifndef ASAN_INTERCEPTORS_H
 #define ASAN_INTERCEPTORS_H
 
-#include "asan_internal.h"
 #include "asan_interceptors_memintrinsics.h"
+#include "asan_internal.h"
 #include "interception/interception.h"
+#include "sanitizer_common/sanitizer_platform.h"
 #include "sanitizer_common/sanitizer_platform_interceptors.h"
 
 namespace __asan {
@@ -99,17 +100,30 @@ void InitializePlatformInterceptors();
 # define ASAN_INTERCEPT___CXA_ATEXIT 0
 #endif
 
+#if SANITIZER_NETBSD
+# define ASAN_INTERCEPT_ATEXIT 1
+#else
+# define ASAN_INTERCEPT_ATEXIT 0
+#endif
+
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
 # define ASAN_INTERCEPT___STRDUP 1
 #else
 # define ASAN_INTERCEPT___STRDUP 0
 #endif
 
-#if SANITIZER_LINUX && (defined(__arm__) || defined(__aarch64__) || \
-                        defined(__i386__) || defined(__x86_64__))
+#if SANITIZER_LINUX &&                                                \
+    (defined(__arm__) || defined(__aarch64__) || defined(__i386__) || \
+     defined(__x86_64__) || SANITIZER_RISCV64)
 # define ASAN_INTERCEPT_VFORK 1
 #else
 # define ASAN_INTERCEPT_VFORK 0
+#endif
+
+#if SANITIZER_NETBSD
+# define ASAN_INTERCEPT_PTHREAD_ATFORK 1
+#else
+# define ASAN_INTERCEPT_PTHREAD_ATFORK 0
 #endif
 
 DECLARE_REAL(int, memcmp, const void *a1, const void *a2, uptr size)

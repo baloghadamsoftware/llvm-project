@@ -33,9 +33,14 @@
 #include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/PassManager.h"
+#include "llvm/InitializePasses.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/ObjCARC.h"
 
 using namespace llvm;
 using namespace llvm::objcarc;
@@ -45,68 +50,71 @@ using namespace llvm::objcarc;
 STATISTIC(NumPeeps,       "Number of calls peephole-optimized");
 STATISTIC(NumStoreStrongs, "Number objc_storeStrong calls formed");
 
-static cl::opt<unsigned> MaxBBSize("arc-contract-max-bb-size", cl::Hidden,
-    cl::desc("Maximum basic block size to discover the dominance relation of "
-             "two instructions in the same basic block"), cl::init(65535));
-
 //===----------------------------------------------------------------------===//
 //                                Declarations
 //===----------------------------------------------------------------------===//
 
 namespace {
-  /// Late ARC optimizations
-  ///
-  /// These change the IR in a way that makes it difficult to be analyzed by
-  /// ObjCARCOpt, so it's run late.
-  class ObjCARCContract : public FunctionPass {
-    bool Changed;
-    AliasAnalysis *AA;
-    DominatorTree *DT;
-    ProvenanceAnalysis PA;
-    ARCRuntimeEntryPoints EP;
+/// Late ARC optimizations
+///
+/// These change the IR in a way that makes it difficult to be analyzed by
+/// ObjCARCOpt, so it's run late.
 
-    /// A flag indicating whether this optimization pass should run.
-    bool Run;
+class ObjCARCContract {
+  bool Changed;
+  AliasAnalysis *AA;
+  DominatorTree *DT;
+  ProvenanceAnalysis PA;
+  ARCRuntimeEntryPoints EP;
 
-    /// The inline asm string to insert between calls and RetainRV calls to make
-    /// the optimization work on targets which need it.
-    const MDString *RVInstMarker;
+  /// A flag indicating whether this optimization pass should run.
+  bool Run;
 
-    /// The set of inserted objc_storeStrong calls. If at the end of walking the
-    /// function we have found no alloca instructions, these calls can be marked
-    /// "tail".
-    SmallPtrSet<CallInst *, 8> StoreStrongCalls;
+  /// The inline asm string to insert between calls and RetainRV calls to make
+  /// the optimization work on targets which need it.
+  const MDString *RVInstMarker;
 
-    /// Returns true if we eliminated Inst.
-    bool tryToPeepholeInstruction(
-        Function &F, Instruction *Inst, inst_iterator &Iter,
-        SmallPtrSetImpl<Instruction *> &DepInsts,
-        SmallPtrSetImpl<const BasicBlock *> &Visited,
-        bool &TailOkForStoreStrong,
-        const DenseMap<BasicBlock *, ColorVector> &BlockColors);
+  /// The set of inserted objc_storeStrong calls. If at the end of walking the
+  /// function we have found no alloca instructions, these calls can be marked
+  /// "tail".
+  SmallPtrSet<CallInst *, 8> StoreStrongCalls;
 
-    bool optimizeRetainCall(Function &F, Instruction *Retain);
+  /// Returns true if we eliminated Inst.
+  bool tryToPeepholeInstruction(
+      Function &F, Instruction *Inst, inst_iterator &Iter,
+      SmallPtrSetImpl<Instruction *> &DepInsts,
+      SmallPtrSetImpl<const BasicBlock *> &Visited, bool &TailOkForStoreStrong,
+      const DenseMap<BasicBlock *, ColorVector> &BlockColors);
 
-    bool
-    contractAutorelease(Function &F, Instruction *Autorelease,
-                        ARCInstKind Class,
-                        SmallPtrSetImpl<Instruction *> &DependingInstructions,
-                        SmallPtrSetImpl<const BasicBlock *> &Visited);
+  bool optimizeRetainCall(Function &F, Instruction *Retain);
 
-    void tryToContractReleaseIntoStoreStrong(
-        Instruction *Release, inst_iterator &Iter,
-        const DenseMap<BasicBlock *, ColorVector> &BlockColors);
+  bool
+  contractAutorelease(Function &F, Instruction *Autorelease, ARCInstKind Class,
+                      SmallPtrSetImpl<Instruction *> &DependingInstructions,
+                      SmallPtrSetImpl<const BasicBlock *> &Visited);
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
-    bool doInitialization(Module &M) override;
-    bool runOnFunction(Function &F) override;
+  void tryToContractReleaseIntoStoreStrong(
+      Instruction *Release, inst_iterator &Iter,
+      const DenseMap<BasicBlock *, ColorVector> &BlockColors);
 
-  public:
-    static char ID;
-    ObjCARCContract() : FunctionPass(ID) {
-      initializeObjCARCContractPass(*PassRegistry::getPassRegistry());
-    }
-  };
+public:
+  bool init(Module &M);
+  bool run(Function &F, AAResults *AA, DominatorTree *DT);
+};
+
+class ObjCARCContractLegacyPass : public FunctionPass {
+  ObjCARCContract OCARCC;
+
+public:
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  bool doInitialization(Module &M) override;
+  bool runOnFunction(Function &F) override;
+
+  static char ID;
+  ObjCARCContractLegacyPass() : FunctionPass(ID) {
+    initializeObjCARCContractLegacyPassPass(*PassRegistry::getPassRegistry());
+  }
+};
 }
 
 //===----------------------------------------------------------------------===//
@@ -117,8 +125,7 @@ namespace {
 /// return value. We do this late so we do not disrupt the dataflow analysis in
 /// ObjCARCOpt.
 bool ObjCARCContract::optimizeRetainCall(Function &F, Instruction *Retain) {
-  ImmutableCallSite CS(GetArgRCIdentityRoot(Retain));
-  const Instruction *Call = CS.getInstruction();
+  const auto *Call = dyn_cast<CallBase>(GetArgRCIdentityRoot(Retain));
   if (!Call)
     return false;
   if (Call->getParent() != Retain->getParent())
@@ -532,6 +539,7 @@ bool ObjCARCContract::tryToPeepholeInstruction(
     return true;
   case ARCInstKind::IntrinsicUser:
     // Remove calls to @llvm.objc.clang.arc.use(...).
+    Changed = true;
     Inst->eraseFromParent();
     return true;
   default:
@@ -543,7 +551,22 @@ bool ObjCARCContract::tryToPeepholeInstruction(
 //                              Top Level Driver
 //===----------------------------------------------------------------------===//
 
-bool ObjCARCContract::runOnFunction(Function &F) {
+bool ObjCARCContract::init(Module &M) {
+  // If nothing in the Module uses ARC, don't do anything.
+  Run = ModuleHasARC(M);
+  if (!Run)
+    return false;
+
+  EP.init(&M);
+
+  // Initialize RVInstMarker.
+  const char *MarkerKey = "clang.arc.retainAutoreleasedReturnValueMarker";
+  RVInstMarker = dyn_cast_or_null<MDString>(M.getModuleFlag(MarkerKey));
+
+  return false;
+}
+
+bool ObjCARCContract::run(Function &F, AAResults *A, DominatorTree *D) {
   if (!EnableARCOpts)
     return false;
 
@@ -552,10 +575,9 @@ bool ObjCARCContract::runOnFunction(Function &F) {
     return false;
 
   Changed = false;
-  AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
-  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-
-  PA.setAA(&getAnalysis<AAResultsWrapperPass>().getAAResults());
+  AA = A;
+  DT = D;
+  PA.setAA(A);
 
   DenseMap<BasicBlock *, ColorVector> BlockColors;
   if (F.hasPersonalityFn() &&
@@ -578,23 +600,6 @@ bool ObjCARCContract::runOnFunction(Function &F) {
   SmallPtrSet<Instruction *, 4> DependingInstructions;
   SmallPtrSet<const BasicBlock *, 4> Visited;
 
-  // Cache the basic block size.
-  DenseMap<const BasicBlock *, unsigned> BBSizeMap;
-
-  // A lambda that lazily computes the size of a basic block and determines
-  // whether the size exceeds MaxBBSize.
-  auto IsLargeBB = [&](const BasicBlock *BB) {
-    unsigned BBSize;
-    auto I = BBSizeMap.find(BB);
-
-    if (I != BBSizeMap.end())
-      BBSize = I->second;
-    else
-      BBSize = BBSizeMap[BB] = BB->size();
-
-    return BBSize > MaxBBSize;
-  };
-
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E;) {
     Instruction *Inst = &*I++;
 
@@ -612,7 +617,7 @@ bool ObjCARCContract::runOnFunction(Function &F) {
     // and such; to do the replacement, the argument must have type i8*.
 
     // Function for replacing uses of Arg dominated by Inst.
-    auto ReplaceArgUses = [Inst, IsLargeBB, this](Value *Arg) {
+    auto ReplaceArgUses = [Inst, this](Value *Arg) {
       // If we're compiling bugpointed code, don't get in trouble.
       if (!isa<Instruction>(Arg) && !isa<Argument>(Arg))
         return;
@@ -623,17 +628,6 @@ bool ObjCARCContract::runOnFunction(Function &F) {
         // Increment UI now, because we may unlink its element.
         Use &U = *UI++;
         unsigned OperandNo = U.getOperandNo();
-
-        // Don't replace the uses if Inst and the user belong to the same basic
-        // block and the size of the basic block is large. We don't want to call
-        // DominatorTree::dominate in that case. We can remove this check if we
-        // can use OrderedBasicBlock to compute the dominance relation between
-        // two instructions, but that's not currently possible since it doesn't
-        // recompute the instruction ordering when new instructions are inserted
-        // to the basic block.
-        if (Inst->getParent() == cast<Instruction>(U.getUser())->getParent() &&
-            IsLargeBB(Inst->getParent()))
-          continue;
 
         // If the call's return value dominates a use of the call's argument
         // value, rewrite the use to use the return value. We check for
@@ -686,7 +680,6 @@ bool ObjCARCContract::runOnFunction(Function &F) {
         }
       }
     };
-
 
     Value *Arg = cast<CallInst>(Inst)->getArgOperand(0);
     Value *OrigArg = Arg;
@@ -750,33 +743,51 @@ bool ObjCARCContract::runOnFunction(Function &F) {
 //                             Misc Pass Manager
 //===----------------------------------------------------------------------===//
 
-char ObjCARCContract::ID = 0;
-INITIALIZE_PASS_BEGIN(ObjCARCContract, "objc-arc-contract",
+char ObjCARCContractLegacyPass::ID = 0;
+INITIALIZE_PASS_BEGIN(ObjCARCContractLegacyPass, "objc-arc-contract",
                       "ObjC ARC contraction", false, false)
 INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_END(ObjCARCContract, "objc-arc-contract",
+INITIALIZE_PASS_END(ObjCARCContractLegacyPass, "objc-arc-contract",
                     "ObjC ARC contraction", false, false)
 
-void ObjCARCContract::getAnalysisUsage(AnalysisUsage &AU) const {
+void ObjCARCContractLegacyPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<AAResultsWrapperPass>();
   AU.addRequired<DominatorTreeWrapperPass>();
   AU.setPreservesCFG();
 }
 
-Pass *llvm::createObjCARCContractPass() { return new ObjCARCContract(); }
+Pass *llvm::createObjCARCContractPass() {
+  return new ObjCARCContractLegacyPass();
+}
 
-bool ObjCARCContract::doInitialization(Module &M) {
-  // If nothing in the Module uses ARC, don't do anything.
-  Run = ModuleHasARC(M);
-  if (!Run)
-    return false;
+bool ObjCARCContractLegacyPass::doInitialization(Module &M) {
+  return OCARCC.init(M);
+}
 
-  EP.init(&M);
+bool ObjCARCContractLegacyPass::runOnFunction(Function &F) {
+  auto *AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
+  auto *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  return OCARCC.run(F, AA, DT);
+}
 
-  // Initialize RVInstMarker.
-  const char *MarkerKey = "clang.arc.retainAutoreleasedReturnValueMarker";
-  RVInstMarker = dyn_cast_or_null<MDString>(M.getModuleFlag(MarkerKey));
+PreservedAnalyses ObjCARCContractPass::run(Module &M,
+                                           ModuleAnalysisManager &AM) {
+  ObjCARCContract OCAC;
+  OCAC.init(M);
 
-  return false;
+  auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+  bool Changed = false;
+  for (Function &F : M) {
+    if (F.isDeclaration())
+      continue;
+    Changed |= OCAC.run(F, &FAM.getResult<AAManager>(F),
+                        &FAM.getResult<DominatorTreeAnalysis>(F));
+  }
+  if (Changed) {
+    PreservedAnalyses PA;
+    PA.preserveSet<CFGAnalyses>();
+    return PA;
+  }
+  return PreservedAnalyses::all();
 }

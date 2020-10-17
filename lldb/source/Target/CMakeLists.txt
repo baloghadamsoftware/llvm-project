@@ -1,22 +1,24 @@
-lldb_tablegen(Properties.inc -gen-lldb-property-defs
-  SOURCE Properties.td
+lldb_tablegen(TargetProperties.inc -gen-lldb-property-defs
+  SOURCE TargetProperties.td
   TARGET LLDBTargetPropertiesGen)
 
-lldb_tablegen(PropertiesEnum.inc -gen-lldb-property-enum-defs
-  SOURCE Properties.td
+lldb_tablegen(TargetPropertiesEnum.inc -gen-lldb-property-enum-defs
+  SOURCE TargetProperties.td
   TARGET LLDBTargetPropertiesEnumGen)
 
 add_lldb_library(lldbTarget
   ABI.cpp
+  AssertFrameRecognizer.cpp
   ExecutionContext.cpp
-  JITLoader.cpp
-  JITLoaderList.cpp
   InstrumentationRuntime.cpp
   InstrumentationRuntimeStopInfo.cpp
+  JITLoader.cpp
+  JITLoaderList.cpp
   Language.cpp
   LanguageRuntime.cpp
   Memory.cpp
   MemoryHistory.cpp
+  MemoryRegionInfo.cpp
   ModuleCache.cpp
   OperatingSystem.cpp
   PathMappingList.cpp
@@ -26,6 +28,7 @@ add_lldb_library(lldbTarget
   QueueItem.cpp
   QueueList.cpp
   RegisterContext.cpp
+  RegisterContextUnwind.cpp
   RegisterNumber.cpp
   RemoteAwarePlatform.cpp
   SectionLoadHistory.cpp
@@ -60,9 +63,13 @@ add_lldb_library(lldbTarget
   ThreadPlanStepThrough.cpp
   ThreadPlanStepUntil.cpp
   ThreadPlanTracer.cpp
+  ThreadPlanStack.cpp
   ThreadSpec.cpp
+  Trace.cpp
+  TraceSessionFileParser.cpp
   UnixSignals.cpp
   UnwindAssembly.cpp
+  UnwindLLDB.cpp
 
   LINK_LIBS
     lldbBreakpoint
@@ -77,6 +84,7 @@ add_lldb_library(lldbTarget
 
   LINK_COMPONENTS
     Support
+    MC
   )
 
 add_dependencies(lldbTarget

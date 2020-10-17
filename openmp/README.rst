@@ -4,7 +4,7 @@ How to Build the LLVM* OpenMP* Libraries
 This repository requires `CMake <http://www.cmake.org/>`_ v2.8.0 or later.  LLVM
 and Clang need a more recent version which also applies for in-tree builds.  For
 more information than available in this document please see
-`LLVM's CMake documentation <http://llvm.org/docs/CMake.html>`_ and the
+`LLVM's CMake documentation <https://llvm.org/docs/CMake.html>`_ and the
 `official documentation <https://cmake.org/cmake/help/v2.8.0/cmake.html>`_.
 
 .. contents::
@@ -130,6 +130,10 @@ Options for all Libraries
   Specify full path to ``FileCheck`` executable for running tests.  The default
   is to search the ``PATH`` and the directory in **OPENMP_LLVM_TOOLS_DIR**.
 
+**OPENMP_NOT_EXECUTABLE** = ``/path/to/not``
+  Specify full path to ``not`` executable for running tests.  The default
+  is to search the ``PATH`` and the directory in **OPENMP_LLVM_TOOLS_DIR**.
+
 Options for ``libomp``
 ----------------------
 
@@ -220,9 +224,6 @@ These flags are **appended**, they do not overwrite any of the preset flags.
 
 **LIBOMP_CPPFLAGS** = <space-separated flags>
   Additional C preprocessor flags.
-
-**LIBOMP_CFLAGS** = <space-separated flags>
-  Additional C compiler flags.
 
 **LIBOMP_CXXFLAGS** = <space-separated flags>
   Additional C++ compiler flags.
@@ -321,12 +322,12 @@ Advanced Builds with Various Options
 
     $ cmake -DCMAKE_C_COMPILER=icc -DCMAKE_CXX_COMPILER=icpc -DCMAKE_Fortran_COMPILER=ifort -DLIBOMP_FORTRAN_MODULES=on ..
 
-- Have CMake find the C/C++ compiler and specify additional flags for the C
-  compiler, preprocessor, and C++ compiler.
+- Have CMake find the C/C++ compiler and specify additional flags for the
+  preprocessor and C++ compiler.
 
   .. code-blocks:: console
 
-    $ cmake -DLIBOMP_CFLAGS='-specific-flag' -DLIBOMP_CPPFLAGS='-DNEW_FEATURE=1 -DOLD_FEATURE=0' -DLIBOMP_CXXFLAGS='--one-specific-flag --two-specific-flag' ..
+    $ cmake -DLIBOMP_CPPFLAGS='-DNEW_FEATURE=1 -DOLD_FEATURE=0' -DLIBOMP_CXXFLAGS='--one-specific-flag --two-specific-flag' ..
 
 - Build the stubs library
 

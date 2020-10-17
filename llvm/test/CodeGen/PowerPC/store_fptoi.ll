@@ -8,6 +8,82 @@
 ; ==========================================
 
 ; Function Attrs: norecurse nounwind
+define void @qpConv2sdw(fp128* nocapture readonly %a, i64* nocapture %b) {
+entry:
+  %0 = load fp128, fp128* %a, align 16
+  %conv = fptosi fp128 %0 to i64
+  store i64 %conv, i64* %b, align 8
+  ret void
+
+; CHECK-LABEL: qpConv2sdw
+; CHECK: lxv [[LD:[0-9]+]], 0(3)
+; CHECK-NEXT: xscvqpsdz [[CONV:[0-9]+]], [[LD]]
+; CHECK-NEXT: stxsd [[CONV]], 0(4)
+; CHECK-NEXT: blr
+
+; CHECK-PWR8-LABEL: qpConv2sdw
+; CHECK-PWR8: bl __fixkfdi
+; CHECK-PWR8: blr
+}
+
+; Function Attrs: norecurse nounwind
+define void @qpConv2sw(fp128* nocapture readonly %a, i32* nocapture %b) {
+entry:
+  %0 = load fp128, fp128* %a, align 16
+  %conv = fptosi fp128 %0 to i32
+  store i32 %conv, i32* %b, align 4
+  ret void
+
+; CHECK-LABEL: qpConv2sw
+; CHECK: lxv [[LD:[0-9]+]], 0(3)
+; CHECK-NEXT: xscvqpswz [[CONV:[0-9]+]], [[LD]]
+; CHECK-NEXT: stxsiwx [[CONV]], 0, 4
+; CHECK-NEXT: blr
+
+; CHECK-PWR8-LABEL: qpConv2sw
+; CHECK-PWR8: bl __fixkfsi
+; CHECK-PWR8: blr
+}
+
+; Function Attrs: norecurse nounwind
+define void @qpConv2udw(fp128* nocapture readonly %a, i64* nocapture %b) {
+entry:
+  %0 = load fp128, fp128* %a, align 16
+  %conv = fptoui fp128 %0 to i64
+  store i64 %conv, i64* %b, align 8
+  ret void
+
+; CHECK-LABEL: qpConv2udw
+; CHECK: lxv [[LD:[0-9]+]], 0(3)
+; CHECK-NEXT: xscvqpudz [[CONV:[0-9]+]], [[LD]]
+; CHECK-NEXT: stxsd [[CONV]], 0(4)
+; CHECK-NEXT: blr
+
+; CHECK-PWR8-LABEL: qpConv2udw
+; CHECK-PWR8: bl __fixunskfdi
+; CHECK-PWR8: blr
+}
+
+; Function Attrs: norecurse nounwind
+define void @qpConv2uw(fp128* nocapture readonly %a, i32* nocapture %b) {
+entry:
+  %0 = load fp128, fp128* %a, align 16
+  %conv = fptoui fp128 %0 to i32
+  store i32 %conv, i32* %b, align 4
+  ret void
+
+; CHECK-LABEL: qpConv2uw
+; CHECK: lxv [[LD:[0-9]+]], 0(3)
+; CHECK-NEXT: xscvqpuwz [[CONV:[0-9]+]], [[LD]]
+; CHECK-NEXT: stxsiwx [[CONV]], 0, 4
+; CHECK-NEXT: blr
+
+; CHECK-PWR8-LABEL: qpConv2uw
+; CHECK-PWR8: bl __fixunskfsi
+; CHECK-PWR8: blr
+}
+
+; Function Attrs: norecurse nounwind
 define void @dpConv2sdw(double* nocapture readonly %a, i64* nocapture %b) {
 entry:
   %0 = load double, double* %a, align 8
@@ -66,7 +142,7 @@ entry:
 ; CHECK-PWR8-LABEL: dpConv2shw
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sth [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -88,7 +164,7 @@ entry:
 ; CHECK-PWR8-LABEL: dpConv2sb
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stb [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -152,7 +228,7 @@ entry:
 ; CHECK-PWR8-LABEL: spConv2shw
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sth [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -174,7 +250,7 @@ entry:
 ; CHECK-PWR8-LABEL: spConv2sb
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stb [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -253,7 +329,7 @@ entry:
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: sldi [[REG:[0-9]+]], 5, 1
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sthx [[REG]], 4, 5
 ; CHECK-PWR8-NEXT: blr
 }
@@ -278,7 +354,7 @@ entry:
 ; CHECK-PWR8-LABEL: dpConv2sb_x
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stbx [[REG]], 4, 5
 ; CHECK-PWR8-NEXT: blr
 }
@@ -357,7 +433,7 @@ entry:
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: sldi [[REG:[0-9]+]], 5, 1
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG2:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG2:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sthx [[REG2]], 4, [[REG]]
 ; CHECK-PWR8-NEXT: blr
 }
@@ -382,7 +458,7 @@ entry:
 ; CHECK-PWR8-LABEL: spConv2sb_x
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stbx [[REG]], 4, 5
 ; CHECK-PWR8-NEXT: blr
 }
@@ -450,7 +526,7 @@ entry:
 ; CHECK-PWR8-LABEL: dpConv2uhw
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sth [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -472,7 +548,7 @@ entry:
 ; CHECK-PWR8-LABEL: dpConv2ub
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stb [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -536,7 +612,7 @@ entry:
 ; CHECK-PWR8-LABEL: spConv2uhw
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sth [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -558,7 +634,7 @@ entry:
 ; CHECK-PWR8-LABEL: spConv2ub
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stb [[REG]], 0(4)
 ; CHECK-PWR8-NEXT: blr
 }
@@ -637,7 +713,7 @@ entry:
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: sldi [[REG:[0-9]+]], 5, 1
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sthx [[REG]], 4, 5
 ; CHECK-PWR8-NEXT: blr
 }
@@ -662,7 +738,7 @@ entry:
 ; CHECK-PWR8-LABEL: dpConv2ub_x
 ; CHECK-PWR8: lfdx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stbx [[REG]], 4, 5
 ; CHECK-PWR8-NEXT: blr
 }
@@ -741,7 +817,7 @@ entry:
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: sldi [[REG:[0-9]+]], 5, 1
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG2:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG2:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: sthx [[REG2]], 4, [[REG]]
 ; CHECK-PWR8-NEXT: blr
 }
@@ -766,7 +842,7 @@ entry:
 ; CHECK-PWR8-LABEL: spConv2ub_x
 ; CHECK-PWR8: lfsx [[LD:[0-9]+]], 0, 3
 ; CHECK-PWR8-NEXT: xscvdpsxws [[CONV:[0-9]+]], [[LD]]
-; CHECK-PWR8-NEXT: mfvsrwz [[REG:[0-9]+]], [[CONV]]
+; CHECK-PWR8-NEXT: mffprwz [[REG:[0-9]+]], [[CONV]]
 ; CHECK-PWR8-NEXT: stbx [[REG]], 4, 5
 ; CHECK-PWR8-NEXT: blr
 }

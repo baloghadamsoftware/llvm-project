@@ -344,6 +344,16 @@ define void @void_func_v16i16(<16 x i16> %arg0) #0 {
   ret void
 }
 
+; GCN-LABEL: {{^}}void_func_v2i24:
+; GCN: v_add_{{i|u}}32_e32 v0, {{(vcc, )?}}v0, v1
+define void @void_func_v2i24(<2 x i24> %arg0) #0 {
+  %elt0 = extractelement <2 x i24> %arg0, i32 0
+  %elt1 = extractelement <2 x i24> %arg0, i32 1
+  %add = add i24 %elt0, %elt1
+  store i24 %add, i24 addrspace(1)* undef
+  ret void
+}
+
 ; GCN-LABEL: {{^}}void_func_v2f32:
 ; GCN-NOT: v[0:1]
 ; GCN-NOT: v0
@@ -596,7 +606,7 @@ define void @void_func_v32i32_i32_i64(<32 x i32> %arg0, i32 %arg1, i64 %arg2) #0
 ; GCN: buffer_store_byte [[TRUNC_ARG1_I1]], off
 ; GCN: buffer_store_byte [[LOAD_ARG2]], off
 ; GCN: buffer_store_short [[LOAD_ARG3]], off
-; GFX89 buffer_store_short [[LOAD_ARG4]], off
+; GFX89: buffer_store_short [[LOAD_ARG4]], off
 
 ; CI: buffer_store_short [[CVT_ARG4]], off
 define void @void_func_v32i32_i1_i8_i16(<32 x i32> %arg0, i1 %arg1, i8 %arg2, i16 %arg3, half %arg4) #0 {

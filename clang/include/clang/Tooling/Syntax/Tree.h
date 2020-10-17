@@ -39,32 +39,37 @@ namespace syntax {
 class Arena {
 public:
   Arena(SourceManager &SourceMgr, const LangOptions &LangOpts,
-        TokenBuffer Tokens);
+        const TokenBuffer &Tokens);
 
-  const SourceManager &sourceManager() const { return SourceMgr; }
-  const LangOptions &langOptions() const { return LangOpts; }
+  const SourceManager &getSourceManager() const { return SourceMgr; }
+  const LangOptions &getLangOptions() const { return LangOpts; }
 
-  const TokenBuffer &tokenBuffer() const;
-  llvm::BumpPtrAllocator &allocator() { return Allocator; }
+  const TokenBuffer &getTokenBuffer() const;
+  llvm::BumpPtrAllocator &getAllocator() { return Allocator; }
 
+private:
   /// Add \p Buffer to the underlying source manager, tokenize it and store the
-  /// resulting tokens. Useful when there is a need to materialize tokens that
-  /// were not written in user code.
-  std::pair<FileID, llvm::ArrayRef<syntax::Token>>
+  /// resulting tokens. Used exclusively in `FactoryImpl` to materialize tokens
+  /// that were not written in user code.
+  std::pair<FileID, ArrayRef<Token>>
   lexBuffer(std::unique_ptr<llvm::MemoryBuffer> Buffer);
+  friend class FactoryImpl;
 
 private:
   SourceManager &SourceMgr;
   const LangOptions &LangOpts;
-  TokenBuffer Tokens;
+  const TokenBuffer &Tokens;
   /// IDs and storage for additional tokenized files.
-  llvm::DenseMap<FileID, std::vector<syntax::Token>> ExtraTokens;
+  llvm::DenseMap<FileID, std::vector<Token>> ExtraTokens;
   /// Keeps all the allocated nodes and their intermediate data structures.
   llvm::BumpPtrAllocator Allocator;
 };
 
 class Tree;
 class TreeBuilder;
+class FactoryImpl;
+class MutationsImpl;
+
 enum class NodeKind : uint16_t;
 enum class NodeRole : uint8_t;
 
@@ -76,40 +81,73 @@ public:
   /// set when the node is added as a child to another one.
   Node(NodeKind Kind);
 
-  NodeKind kind() const { return static_cast<NodeKind>(Kind); }
-  NodeRole role() const { return static_cast<NodeRole>(Role); }
+  NodeKind getKind() const { return static_cast<NodeKind>(Kind); }
+  NodeRole getRole() const { return static_cast<NodeRole>(Role); }
 
-  const Tree *parent() const { return Parent; }
-  Tree *parent() { return Parent; }
+  /// Whether the node is detached from a tree, i.e. does not have a parent.
+  bool isDetached() const;
+  /// Whether the node was created from the AST backed by the source code
+  /// rather than added later through mutation APIs or created with factory
+  /// functions.
+  /// When this flag is true, all subtrees are also original.
+  /// This flag is set to false on any modifications to the node or any of its
+  /// subtrees, even if this simply involves swapping existing subtrees.
+  bool isOriginal() const { return Original; }
+  /// If this function return false, the tree cannot be modified because there
+  /// is no reasonable way to produce the corresponding textual replacements.
+  /// This can happen when the node crosses macro expansion boundaries.
+  ///
+  /// Note that even if the node is not modifiable, its child nodes can be
+  /// modifiable.
+  bool canModify() const { return CanModify; }
 
-  const Node *nextSibling() const { return NextSibling; }
-  Node *nextSibling() { return NextSibling; }
+  const Tree *getParent() const { return Parent; }
+  Tree *getParent() { return Parent; }
+
+  const Node *getNextSibling() const { return NextSibling; }
+  Node *getNextSibling() { return NextSibling; }
 
   /// Dumps the structure of a subtree. For debugging and testing purposes.
-  std::string dump(const Arena &A) const;
+  std::string dump(const SourceManager &SM) const;
   /// Dumps the tokens forming this subtree.
-  std::string dumpTokens(const Arena &A) const;
+  std::string dumpTokens(const SourceManager &SM) const;
+
+  /// Asserts invariants on this node of the tree and its immediate children.
+  /// Will not recurse into the subtree. No-op if NDEBUG is set.
+  void assertInvariants() const;
+  /// Runs checkInvariants on all nodes in the subtree. No-op if NDEBUG is set.
+  void assertInvariantsRecursive() const;
 
 private:
   // Tree is allowed to change the Parent link and Role.
   friend class Tree;
+  // TreeBuilder is allowed to set the Original and CanModify flags.
+  friend class TreeBuilder;
+  // MutationsImpl sets roles and CanModify flag.
+  friend class MutationsImpl;
+  // FactoryImpl sets CanModify flag.
+  friend class FactoryImpl;
+
+  void setRole(NodeRole NR);
 
   Tree *Parent;
   Node *NextSibling;
   unsigned Kind : 16;
   unsigned Role : 8;
+  unsigned Original : 1;
+  unsigned CanModify : 1;
 };
 
 /// A leaf node points to a single token inside the expanded token stream.
 class Leaf final : public Node {
 public:
-  Leaf(const syntax::Token *T);
+  Leaf(const Token *T);
   static bool classof(const Node *N);
 
-  const syntax::Token *token() const { return Tok; }
+  const Token *getToken() const { return Tok; }
 
 private:
-  const syntax::Token *Tok;
+  const Token *Tok;
 };
 
 /// A node that has children and represents a syntactic language construct.
@@ -118,22 +156,101 @@ public:
   using Node::Node;
   static bool classof(const Node *N);
 
-  Node *firstChild() { return FirstChild; }
-  const Node *firstChild() const { return FirstChild; }
+  Node *getFirstChild() { return FirstChild; }
+  const Node *getFirstChild() const { return FirstChild; }
+
+  Leaf *findFirstLeaf();
+  const Leaf *findFirstLeaf() const {
+    return const_cast<Tree *>(this)->findFirstLeaf();
+  }
+
+  Leaf *findLastLeaf();
+  const Leaf *findLastLeaf() const {
+    return const_cast<Tree *>(this)->findLastLeaf();
+  }
 
 protected:
   /// Find the first node with a corresponding role.
-  syntax::Node *findChild(NodeRole R);
+  Node *findChild(NodeRole R);
 
 private:
   /// Prepend \p Child to the list of children and and sets the parent pointer.
   /// A very low-level operation that does not check any invariants, only used
-  /// by TreeBuilder.
-  /// EXPECTS: Role != NodeRoleDetached.
+  /// by TreeBuilder and FactoryImpl.
+  /// EXPECTS: Role != Detached.
   void prependChildLowLevel(Node *Child, NodeRole Role);
+  /// Like the previous overload, but does not set role for \p Child.
+  /// EXPECTS: Child->Role != Detached
+  void prependChildLowLevel(Node *Child);
   friend class TreeBuilder;
+  friend class FactoryImpl;
+
+  /// Replace a range of children [BeforeBegin->NextSibling, End) with a list of
+  /// new nodes starting at \p New.
+  /// Only used by MutationsImpl to implement higher-level mutation operations.
+  /// (!) \p New can be null to model removal of the child range.
+  void replaceChildRangeLowLevel(Node *BeforeBegin, Node *End, Node *New);
+  friend class MutationsImpl;
 
   Node *FirstChild = nullptr;
+};
+
+/// A list of Elements separated or terminated by a fixed token.
+///
+/// This type models the following grammar construct:
+/// delimited-list(element, delimiter, termination, canBeEmpty)
+class List : public Tree {
+public:
+  template <typename Element> struct ElementAndDelimiter {
+    Element *element;
+    Leaf *delimiter;
+  };
+
+  enum class TerminationKind {
+    Terminated,
+    MaybeTerminated,
+    Separated,
+  };
+
+  using Tree::Tree;
+  static bool classof(const Node *N);
+  /// Returns the elements and corresponding delimiters. Missing elements
+  /// and delimiters are represented as null pointers.
+  ///
+  /// For example, in a separated list:
+  /// "a, b, c"  <=> [("a" , ","), ("b" , "," ), ("c" , null)]
+  /// "a,  , c"  <=> [("a" , ","), (null, "," ), ("c" , null)]
+  /// "a, b  c"  <=> [("a" , ","), ("b" , null), ("c" , null)]
+  /// "a, b,"    <=> [("a" , ","), ("b" , "," ), (null, null)]
+  ///
+  /// In a terminated or maybe-terminated list:
+  /// "a; b; c;" <=> [("a" , ";"), ("b" , ";" ), ("c" , ";" )]
+  /// "a;  ; c;" <=> [("a" , ";"), (null, ";" ), ("c" , ";" )]
+  /// "a; b  c;" <=> [("a" , ";"), ("b" , null), ("c" , ";" )]
+  /// "a; b; c"  <=> [("a" , ";"), ("b" , ";" ), ("c" , null)]
+  std::vector<ElementAndDelimiter<Node>> getElementsAsNodesAndDelimiters();
+
+  /// Returns the elements of the list. Missing elements are represented
+  /// as null pointers in the same way as in the return value of
+  /// `getElementsAsNodesAndDelimiters()`.
+  std::vector<Node *> getElementsAsNodes();
+
+  // These can't be implemented with the information we have!
+
+  /// Returns the appropriate delimiter for this list.
+  ///
+  /// Useful for discovering the correct delimiter to use when adding
+  /// elements to empty or one-element lists.
+  clang::tok::TokenKind getDelimiterTokenKind() const;
+
+  TerminationKind getTerminationKind() const;
+
+  /// Whether this list can be empty in syntactically and semantically correct
+  /// code.
+  ///
+  /// This list may be empty when the source code has errors even if
+  /// canBeEmpty() returns false.
+  bool canBeEmpty() const;
 };
 
 } // namespace syntax

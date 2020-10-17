@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_PlatformLinux_h_
-#define liblldb_PlatformLinux_h_
+#ifndef LLDB_SOURCE_PLUGINS_PLATFORM_LINUX_PLATFORMLINUX_H
+#define LLDB_SOURCE_PLUGINS_PLATFORM_LINUX_PLATFORMLINUX_H
 
 #include "Plugins/Platform/POSIX/PlatformPOSIX.h"
 
@@ -17,8 +17,6 @@ namespace platform_linux {
 class PlatformLinux : public PlatformPOSIX {
 public:
   PlatformLinux(bool is_host);
-
-  ~PlatformLinux() override;
 
   static void Initialize();
 
@@ -48,25 +46,15 @@ public:
 
   bool CanDebugProcess() override;
 
-  std::vector<std::string>
-  GetSystemIncludeDirectories(lldb::LanguageType lang) override;
-
-  lldb::ProcessSP DebugProcess(ProcessLaunchInfo &launch_info,
-                               Debugger &debugger, Target *target,
-                               Status &error) override;
-
   void CalculateTrapHandlerSymbolNames() override;
 
   MmapArgList GetMmapArgumentList(const ArchSpec &arch, lldb::addr_t addr,
                                   lldb::addr_t length, unsigned prot,
                                   unsigned flags, lldb::addr_t fd,
                                   lldb::addr_t offset) override;
-
-private:
-  DISALLOW_COPY_AND_ASSIGN(PlatformLinux);
 };
 
 } // namespace platform_linux
 } // namespace lldb_private
 
-#endif // liblldb_PlatformLinux_h_
+#endif // LLDB_SOURCE_PLUGINS_PLATFORM_LINUX_PLATFORMLINUX_H

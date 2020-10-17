@@ -17,6 +17,7 @@
 #include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -46,7 +47,7 @@ class raw_ostream;
 
   public:
     /// Create a BitcodeWriter that writes to Buffer.
-    BitcodeWriter(SmallVectorImpl<char> &Buffer);
+    BitcodeWriter(SmallVectorImpl<char> &Buffer, raw_fd_stream *FS = nullptr);
 
     ~BitcodeWriter();
 
@@ -150,6 +151,15 @@ class raw_ostream;
   void WriteIndexToFile(const ModuleSummaryIndex &Index, raw_ostream &Out,
                         const std::map<std::string, GVSummaryMapTy>
                             *ModuleToSummariesForIndex = nullptr);
+
+  /// Save a copy of the llvm IR as data in the __LLVM,__bitcode section.
+  /// If available, pass the serialized module via the Buf parameter. If not,
+  /// pass an empty (default-initialized) MemoryBufferRef, and the serialization
+  /// will be handled by this API. The same behavior happens if the provided Buf
+  /// is not bitcode (i.e. if it's invalid data or even textual LLVM assembly).
+  void EmbedBitcodeInModule(Module &M, MemoryBufferRef Buf, bool EmbedBitcode,
+                            bool EmbedMarker,
+                            const std::vector<uint8_t> *CmdArgs);
 
 } // end namespace llvm
 

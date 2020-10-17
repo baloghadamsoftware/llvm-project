@@ -23,10 +23,14 @@ subdirectories =
  CodeGen
  DebugInfo
  Demangle
+ DWARFLinker
  ExecutionEngine
+ Extensions
+ Frontend
  FuzzMutate
  LineEditor
  Linker
+ InterfaceStub
  IR
  IRReader
  LTO

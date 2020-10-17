@@ -24,7 +24,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: libcxxabi-no-exceptions
+// UNSUPPORTED: no-exceptions
 
 // Clang emits  warnings about exceptions of type 'Child' being caught by
 // an earlier handler of type 'Base'. Congrats clang, you've just
@@ -71,7 +71,7 @@ void f3() {
   throw static_cast<Base2*>(&child);
 }
 
-int main()
+int main(int, char**)
 {
     try
     {
@@ -170,4 +170,6 @@ int main()
     {
         assert(false);
     }
+
+    return 0;
 }

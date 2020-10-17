@@ -57,6 +57,8 @@ public:
   void writeRelocations(llvm::raw_ostream &os) const;
 
   ObjFile *file;
+  OutputSection *outputSec = nullptr;
+  // Offset withing the output section
   int32_t outputOffset = 0;
 
   // Signals that the section is part of the output.  The garbage collector,
@@ -83,7 +85,7 @@ protected:
 
 // Represents a WebAssembly data segment which can be included as part of
 // an output data segments.  Note that in WebAssembly, unlike ELF and other
-// formats, used the term "data segment" to refer to the continous regions of
+// formats, used the term "data segment" to refer to the continuous regions of
 // memory that make on the data section. See:
 // https://webassembly.github.io/spec/syntax/modules.html#syntax-data
 //
@@ -120,7 +122,10 @@ protected:
 class InputFunction : public InputChunk {
 public:
   InputFunction(const WasmSignature &s, const WasmFunction *func, ObjFile *f)
-      : InputChunk(f, InputChunk::Function), signature(s), function(func) {}
+      : InputChunk(f, InputChunk::Function), signature(s), function(func),
+        exportName(func && func->ExportName.hasValue()
+                       ? (*func->ExportName).str()
+                       : llvm::Optional<std::string>()) {}
 
   static bool classof(const InputChunk *c) {
     return c->kind() == InputChunk::Function ||
@@ -130,6 +135,11 @@ public:
   void writeTo(uint8_t *sectionStart) const override;
   StringRef getName() const override { return function->SymbolName; }
   StringRef getDebugName() const override { return function->DebugName; }
+  llvm::Optional<StringRef> getExportName() const {
+    return exportName.hasValue() ? llvm::Optional<StringRef>(*exportName)
+                                 : llvm::Optional<StringRef>();
+  }
+  void setExportName(std::string exportName) { this->exportName = exportName; }
   uint32_t getComdat() const override { return function->Comdat; }
   uint32_t getFunctionInputOffset() const { return getInputSectionOffset(); }
   uint32_t getFunctionCodeOffset() const { return function->CodeOffset; }
@@ -153,7 +163,7 @@ public:
 
   // The size of a given input function can depend on the values of the
   // LEB relocations within it.  This finalizeContents method is called after
-  // all the symbol values have be calcualted but before getSize() is ever
+  // all the symbol values have be calculated but before getSize() is ever
   // called.
   void calculateSize();
 
@@ -167,6 +177,7 @@ protected:
   }
 
   const WasmFunction *function;
+  llvm::Optional<std::string> exportName;
   llvm::Optional<uint32_t> functionIndex;
   llvm::Optional<uint32_t> tableIndex;
   uint32_t compressedFuncSize = 0;
@@ -210,8 +221,6 @@ public:
   StringRef getName() const override { return section.Name; }
   StringRef getDebugName() const override { return StringRef(); }
   uint32_t getComdat() const override { return UINT32_MAX; }
-
-  OutputSection *outputSec = nullptr;
 
 protected:
   ArrayRef<uint8_t> data() const override { return section.Content; }

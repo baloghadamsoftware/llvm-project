@@ -6,10 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: c++98, c++03
+// UNSUPPORTED: c++03
 
 #define TESTING_CXA_GUARD
 #include "../src/cxa_guard_impl.h"
+#include <cassert>
 
 using namespace __cxxabiv1;
 
@@ -108,7 +109,7 @@ void NopFutexWait(int*, int) { assert(false); }
 void NopFutexWake(int*) { assert(false); }
 uint32_t MockGetThreadID() { return 0; }
 
-int main() {
+int main(int, char**) {
   {
 #if defined(_LIBCXXABI_HAS_NO_THREADS)
     static_assert(CurrentImplementation == Implementation::NoThreads, "");
@@ -126,7 +127,7 @@ int main() {
 #endif
   }
   {
-#if defined(__APPLE__) || defined(__linux__)
+#if (defined(__APPLE__) || defined(__linux__))  && !defined(_LIBCXXABI_HAS_NO_THREADS)
     assert(PlatformThreadID);
 #endif
     if (PlatformSupportsThreadID()) {
@@ -151,4 +152,6 @@ int main() {
     Tests<uint32_t, FutexImpl>::test();
     Tests<uint64_t, FutexImpl>::test();
   }
+
+  return 0;
 }

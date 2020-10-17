@@ -98,7 +98,7 @@ private:
   void readTokenWithJavaScriptASI();
   void parseStructuralElement();
   bool tryToParseBracedList();
-  bool parseBracedList(bool ContinueOnSemicolons = false,
+  bool parseBracedList(bool ContinueOnSemicolons = false, bool IsEnum = false,
                        tok::TokenKind ClosingBraceKind = tok::r_brace);
   void parseParens();
   void parseSquare(bool LambdaIntroducer = false);
@@ -106,7 +106,7 @@ private:
   void parseTryCatch();
   void parseForOrWhileLoop();
   void parseDoWhile();
-  void parseLabel();
+  void parseLabel(bool LeftAlignLabel = false);
   void parseCaseLabel();
   void parseSwitch();
   void parseNamespace();
@@ -118,6 +118,7 @@ private:
   // parses the record as a child block, i.e. if the class declaration is an
   // expression.
   void parseRecord(bool ParseAsExpr = false);
+  void parseObjCLightweightGenerics();
   void parseObjCMethod();
   void parseObjCProtocolList();
   void parseObjCUntilAtEnd();
@@ -125,9 +126,16 @@ private:
   bool parseObjCProtocol();
   void parseJavaScriptEs6ImportExport();
   void parseStatementMacro();
+  void parseCSharpAttribute();
+  // Parse a C# generic type constraint: `where T : IComparable<T>`.
+  // See:
+  // https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/where-generic-type-constraint
+  void parseCSharpGenericTypeConstraint();
   bool tryToParseLambda();
   bool tryToParseLambdaIntroducer();
+  bool tryToParsePropertyAccessor();
   void tryToParseJSFunction();
+  bool tryToParseSimpleAttribute();
   void addUnwrappedLine();
   bool eof() const;
   // LevelDifference is the difference of levels after and before the current
